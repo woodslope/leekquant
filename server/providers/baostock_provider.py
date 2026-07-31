@@ -112,6 +112,7 @@ class BaostockProvider:
         return {
             "id": row.get("code", ""),
             "name": name,
+            "close": close,
             "closeAbovePrev": pct >= 0,
             "closeAboveOpen": close >= open_price if open_price else pct >= 0,
             "highDays": int(max(5, min(30, 10 + pct * 2))),

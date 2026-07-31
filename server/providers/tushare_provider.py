@@ -77,6 +77,7 @@ class TushareProvider:
         return {
             "id": daily["code"],
             "name": daily["code"],
+            "close": daily["close"],
             "closeAbovePrev": pct >= 0,
             "closeAboveOpen": daily["close"] >= daily["open"] if daily["open"] else pct >= 0,
             "highDays": int(max(5, min(30, 10 + pct * 2))),

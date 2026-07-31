@@ -6,7 +6,7 @@ from server.config import get_env, get_provider_order
 from server.providers.mock_provider import MockProvider
 
 
-AUTO_PROVIDER_NAMES = ("akshare", "sina", "baostock")
+AUTO_PROVIDER_NAMES = ("akshare", "sina", "baostock", "tickflow")
 OPTIONAL_PROVIDER_NAMES = ("tushare",)
 REAL_PROVIDER_NAMES = {*AUTO_PROVIDER_NAMES, *OPTIONAL_PROVIDER_NAMES}
 
@@ -42,6 +42,7 @@ def provider_config_status(provider_name: str = "auto") -> dict:
         "providerOrder": list(order),
         "configured": {
             "tushare": bool(get_env("TUSHARE_TOKEN")),
+            "tickflow": bool(get_env("TICKFLOW_API_KEY")),
         },
     }
 
@@ -73,6 +74,10 @@ def call_provider_method(
 
 def _try_create_provider(name: str, warnings: list[str], allow_next: bool):
     try:
+        if name == "tickflow":
+            from server.providers.tickflow_provider import TickFlowProvider
+
+            return TickFlowProvider()
         if name == "akshare":
             from server.providers.akshare_provider import AkshareProvider
 
@@ -90,7 +95,7 @@ def _try_create_provider(name: str, warnings: list[str], allow_next: bool):
 
             return BaostockProvider()
     except Exception as exc:
-        display_names = {"akshare": "AKShare", "tushare": "Tushare", "sina": "新浪", "baostock": "BaoStock"}
+        display_names = {"tickflow": "TickFlow", "akshare": "AKShare", "tushare": "Tushare", "sina": "新浪", "baostock": "BaoStock"}
         display_name = display_names.get(name, name)
         if allow_next:
             warnings.append(f"{display_name} 初始化失败，已尝试备用免费源: {exc}")

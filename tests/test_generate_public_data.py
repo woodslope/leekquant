@@ -48,7 +48,13 @@ class GeneratePublicDataTest(unittest.TestCase):
             self.assertEqual(status["latestFile"], "public-data/latest-scan.json")
             self.assertEqual(status["historyFile"], f"public-data/history/{result['tradeDate']}.json")
 
-    def test_auto_uses_baostock_daily_history_fallback_when_akshare_market_fetch_fails(self):
+    def test_auto_uses_baostock_daily_history_fallback_when_tickflow_and_akshare_market_fetch_fail(self):
+        class FailingTickFlowProvider:
+            name = "tickflow"
+
+            def today_market(self):
+                raise RuntimeError("tf down")
+
         class FailingAkshareProvider:
             name = "akshare"
 
@@ -76,7 +82,9 @@ class GeneratePublicDataTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
-            with patch("server.providers.akshare_provider.AkshareProvider", FailingAkshareProvider), patch.dict(
+            with patch(
+                "server.providers.tickflow_provider.TickFlowProvider", FailingTickFlowProvider
+            ), patch("server.providers.akshare_provider.AkshareProvider", FailingAkshareProvider), patch.dict(
                 sys.modules, {"server.providers.baostock_provider": fake_baostock_module}
             ):
                 result = generate_public_data(output_dir=output_dir, provider_name="auto")

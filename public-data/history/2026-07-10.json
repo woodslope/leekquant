@@ -1,27 +1,29 @@
 {
   "ok": true,
   "mode": "close-scan",
-  "runAt": "2026-08-01 00:31:22",
-  "tradeDate": "2026-07-31",
-  "provider": "tickflow",
+  "runAt": "2026-07-10 19:26:49",
+  "tradeDate": "2026-07-10",
+  "provider": "baostock",
   "strategyName": "强中强反转突破策略 第二版",
   "strategyDescription": "收盘后扫描大盘恐慌放量下跌时逆势收阳的强势个股，用于生成次日观察清单。",
-  "warnings": [],
+  "warnings": [
+    "akshare 行情获取失败，已尝试备用免费源: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+  ],
   "market": {
-    "date": "2026-07-31",
-    "time": "00:31",
-    "indexAboveMa": false,
+    "date": "2026-07-10",
+    "time": "11:28",
+    "indexAboveMa": true,
     "limitDownCount": 0,
     "crashDays": 0,
-    "marketDrop": 0.72,
-    "marketVolRatio": 1.03,
+    "marketDrop": 1.0,
+    "marketVolRatio": 0.99,
     "ma20Up": false,
-    "stockCount": 80
+    "stockCount": 47
   },
   "funnel": {
     "s0": {
-      "status": "fail",
-      "text": "关机"
+      "status": "pass",
+      "text": "开机"
     },
     "s1": {
       "status": "fail",
@@ -36,8 +38,8 @@
     "s0": [
       {
         "name": "250日年线",
-        "val": "指数跌破年线",
-        "status": "阻断"
+        "val": "指数在年线上方",
+        "status": "通过"
       },
       {
         "name": "跌停家数",
@@ -53,8 +55,8 @@
     "s1": [
       {
         "name": "大盘跌幅",
-        "val": "0.72% >= 1.0%",
-        "status": "阻断"
+        "val": "1.0% >= 1.0%",
+        "status": "通过"
       },
       {
         "name": "个股收盘价",
@@ -63,7 +65,7 @@
       },
       {
         "name": "大盘恐慌放量",
-        "val": "1.03 >= 1.5",
+        "val": "0.99 >= 1.5",
         "status": "阻断"
       },
       {

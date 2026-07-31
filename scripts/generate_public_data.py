@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="生成 GitHub Pages 可读取的收盘扫描静态数据")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="静态 JSON 输出目录")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="策略配置 JSON")
-    parser.add_argument("--provider", default="auto", choices=["auto", "tushare", "akshare", "sina", "baostock", "mock"], help="数据源")
+    parser.add_argument("--provider", default="auto", choices=["auto", "tushare", "akshare", "sina", "baostock", "tickflow", "mock"], help="数据源")
     return parser.parse_args()
 
 

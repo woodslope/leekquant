@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 
-DEFAULT_PROVIDER_ORDER = ("akshare", "baostock", "sina", "mock")
+DEFAULT_PROVIDER_ORDER = ("tickflow", "akshare", "baostock", "sina", "mock")
 
 
 def get_env(name: str, default: str | None = None) -> str | None:

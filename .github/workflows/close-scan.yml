@@ -1,13 +1,16 @@
-name: Verify Demo Data
+name: Close Scan
 
 on:
+  schedule:
+    # 工作日 16:37 CST = 08:37 UTC（A 股收盘后约 1 小时）
+    - cron: "37 8 * * 1-5"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify-demo-data:
+  scan:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,8 +22,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Validate fixed demo files
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run close-scan
+        env:
+          TICKFLOW_API_KEY: ${{ secrets.TICKFLOW_API_KEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: |
+          python scripts/generate_public_data.py --provider auto --output-dir public-data || \
+          python scripts/generate_public_data.py --provider mock --output-dir public-data
+
+      - name: Validate generated JSON
         run: |
           python -m json.tool public-data/latest-scan.json > /dev/null
           python -m json.tool public-data/run-status.json > /dev/null
           python -m json.tool public-data/market-snapshot.json > /dev/null
+
+      - name: Commit generated data
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update close scan data [skip ci]"
+          file_pattern: "public-data/"

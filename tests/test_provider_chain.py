@@ -10,6 +10,10 @@ from server.providers.chain import build_providers, call_provider_method, provid
 
 class ProviderChainTest(unittest.TestCase):
     def test_auto_provider_chain_uses_baostock_before_sina_for_daily_history(self):
+        class FailingTickFlowProvider:
+            def __init__(self):
+                raise RuntimeError("tf init down")
+
         class FailingAkshareProvider:
             def __init__(self):
                 raise RuntimeError("ak init down")
@@ -25,7 +29,9 @@ class ProviderChainTest(unittest.TestCase):
         fake_sina_module = types.ModuleType("server.providers.sina_provider")
         fake_sina_module.SinaProvider = SinaProvider
 
-        with patch("server.providers.akshare_provider.AkshareProvider", FailingAkshareProvider), patch.dict(
+        with patch(
+            "server.providers.tickflow_provider.TickFlowProvider", FailingTickFlowProvider
+        ), patch("server.providers.akshare_provider.AkshareProvider", FailingAkshareProvider), patch.dict(
             sys.modules,
             {
                 "server.providers.baostock_provider": fake_baostock_module,
@@ -89,6 +95,9 @@ class ProviderChainTest(unittest.TestCase):
         self.assertEqual(warnings, [])
 
     def test_default_auto_provider_chain_includes_baostock_before_mock(self):
+        class TickFlowProvider:
+            name = "tickflow"
+
         class AkshareProvider:
             name = "akshare"
 
@@ -98,6 +107,8 @@ class ProviderChainTest(unittest.TestCase):
         class BaostockProvider:
             name = "baostock"
 
+        fake_tickflow_module = types.ModuleType("server.providers.tickflow_provider")
+        fake_tickflow_module.TickFlowProvider = TickFlowProvider
         fake_akshare_module = types.ModuleType("server.providers.akshare_provider")
         fake_akshare_module.AkshareProvider = AkshareProvider
         fake_sina_module = types.ModuleType("server.providers.sina_provider")
@@ -108,6 +119,7 @@ class ProviderChainTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), patch.dict(
             sys.modules,
             {
+                "server.providers.tickflow_provider": fake_tickflow_module,
                 "server.providers.akshare_provider": fake_akshare_module,
                 "server.providers.sina_provider": fake_sina_module,
                 "server.providers.baostock_provider": fake_baostock_module,
@@ -115,7 +127,7 @@ class ProviderChainTest(unittest.TestCase):
         ):
             providers, warnings = build_providers("auto")
 
-        self.assertEqual([provider.name for provider in providers], ["akshare", "baostock", "sina", "mock"])
+        self.assertEqual([provider.name for provider in providers], ["tickflow", "akshare", "baostock", "sina", "mock"])
         self.assertEqual(warnings, [])
 
     def test_tushare_can_be_enabled_by_provider_order_and_token(self):
@@ -147,7 +159,7 @@ class ProviderChainTest(unittest.TestCase):
             status = provider_config_status("auto")
 
         self.assertEqual(status["providerOrder"], ["tushare", "akshare", "mock"])
-        self.assertEqual(status["configured"], {"tushare": True})
+        self.assertEqual(status["configured"], {"tushare": True, "tickflow": False})
         self.assertNotIn("secret", str(status))
 
 

@@ -259,15 +259,17 @@
             params: { ...DEFAULT_PARAMS, ...(overrides.params || {}) }
         });
 
-        const normalizeStrategy = (strategy, index = 0) => ({
-            ...strategy,
-            status: strategy.status || 'idle',
-            config: createRuleConfig(strategy.config || (index === 1
+        const normalizeStrategy = (strategy, index = 0, serverParams = null) => {
+            const baseConfig = strategy.config || (index === 1
                 ? { globalTpl: '激进型', s1Tpl: '趋势突破', s2Tpl: '量价型', s3Tpl: '激进套件', s1Keys: [...RULE_TEMPLATES.s1['趋势突破']], s2Keys: [...RULE_TEMPLATES.s2['量价型']], s3Keys: [...RULE_TEMPLATES.s3['激进套件']] }
                 : index === 2
                 ? { globalTpl: '反转型', s1Tpl: '均值回归', s2Tpl: '反转型', s3Tpl: '保守套件', s1Keys: [...RULE_TEMPLATES.s1['均值回归']], s2Keys: [...RULE_TEMPLATES.s2['反转型']], s3Keys: [...RULE_TEMPLATES.s3['保守套件']] }
-                : {}))
-        });
+                : {});
+            // 后端默认参数优先于前端硬编码（本地模式下后端返回统一配置）
+            const effectiveDefaults = serverParams || DEFAULT_PARAMS;
+            const config = createRuleConfig({ ...baseConfig, params: { ...effectiveDefaults, ...(baseConfig.params || {}) } });
+            return { ...strategy, status: strategy.status || 'idle', config };
+        };
 
         const formatToday = () => new Date().toISOString().split('T')[0];
         const parseReturn = (value) => Number(String(value || '0').replace('%', '').replace('+', '')) || 0;
@@ -281,8 +283,8 @@
             .replace(/MACD/g, '趋势指标')
             .replace(/RSI/g, '超卖指标')
             .trim();
-        const dataSourceName = (provider) => provider === 'tushare' ? 'Tushare 历史日线' : provider === 'akshare' ? 'AKShare 历史日线' : provider === 'baostock' ? 'BaoStock 历史日线备用' : provider === 'sina' ? '新浪行情兜底' : provider === 'demo' ? '固定演示数据' : provider === 'mock' ? '样本数据' : provider === 'static' ? '收盘快照' : '本地引擎';
-        const dataSourceTier = (provider) => ['tushare', 'akshare', 'baostock'].includes(provider) ? '数据可信层级：历史日线源' : provider === 'sina' ? '数据可信层级：行情兜底源' : ['demo', 'mock', 'local'].includes(provider) ? '数据可信层级：演示数据' : '数据可信层级：收盘静态快照';
+        const dataSourceName = (provider) => provider === 'tushare' ? 'Tushare 历史日线' : provider === 'akshare' ? 'AKShare 历史日线' : provider === 'baostock' ? 'BaoStock 历史日线备用' : provider === 'sina' ? '新浪行情兜底' : provider === 'tickflow' ? 'TickFlow 日线数据' : provider === 'demo' ? '固定演示数据' : provider === 'mock' ? '样本数据' : provider === 'static' ? '收盘快照' : '本地引擎';
+        const dataSourceTier = (provider) => ['tushare', 'tickflow', 'akshare', 'baostock'].includes(provider) ? '数据可信层级：历史日线源' : provider === 'sina' ? '数据可信层级：行情兜底源' : ['demo', 'mock', 'local'].includes(provider) ? '数据可信层级：演示数据' : '数据可信层级：收盘静态快照';
         const STOCK_BOARD_OPTIONS = [
             { value: 'all', label: '全部' },
             { value: 'main', label: '主板' },
@@ -620,8 +622,8 @@
                 }
             },
             monitorPositions: [
-                { id: '601318', name: '中国平安', entryDate: '05-11', entryPrice: '42.10', profit: '+4.2%', status: 'normal', msg: '趋势结构正常' },
-                { id: '000651', name: '格力电器', entryDate: '05-01', entryPrice: '38.50', profit: '-8.3%', status: 'warning', msg: '硬止损触发' },
+                { id: '601318', name: '中国平安', entryDate: '05-11', entryPrice: '42.10', profit: '+4.2%', status: 'normal', msg: '趋势结构正常', strategyId: 'str_1', strategyName: '强中强反转突破策略 第二版', signalReason: '策略止盈', _factor: { backtestReturn: 4.2, maxLoss: -3.5, exitReason: '策略止盈' } },
+                { id: '000651', name: '格力电器', entryDate: '05-01', entryPrice: '38.50', profit: '-8.3%', status: 'warning', msg: '硬止损触发', strategyId: 'str_1', strategyName: '强中强反转突破策略 第二版', signalReason: '硬止损', _factor: { backtestReturn: -8.3, maxLoss: -9.4, exitReason: '硬止损' } },
                 { id: '000002', name: '万科A', entryDate: '04-12', entryPrice: '10.20', profit: '-14.5%', status: 'danger', msg: '[违规持有3天]' },
                 { id: '002594', name: '比亚迪', entryDate: '05-14', entryPrice: '318.60', profit: '+7.6%', status: 'normal', msg: '移动止盈保护' },
                 { id: '600036', name: '招商银行', entryDate: '05-16', entryPrice: '45.32', profit: '+1.8%', status: 'normal', msg: '等待放量确认' },
@@ -780,7 +782,7 @@
         // ==========================================
         // 子视图：1. 监控页 (Monitor)
         // ==========================================
-        const ViewMonitor = ({ appliedStrategy, positions, setPositions, historyTrades, setHistoryTrades, executedSignalIds, setExecutedSignalIds, apiStatus, staticScan, onShowToast, onOpenStockDetail }) => {
+        const ViewMonitor = ({ appliedStrategy, positions, setPositions, historyTrades, setHistoryTrades, executedSignalIds, setExecutedSignalIds, apiStatus, staticScan, serverDefaultParams, onShowToast, onOpenStockDetail }) => {
             const localDemoDate = "2026-05-20";
             const [currentDate, setCurrentDate] = useState(localDemoDate);
             const [expandedSteps, setExpandedSteps] = useState({ s0: false, s1: true, s2: false });
@@ -820,7 +822,18 @@
                 tradeDate: staticScan.tradeDate
             } : null;
             const awaitingLocalScan = apiStatus.status === 'online' && isLiveDate && !remoteData;
-            const activeData = staticData || (isLiveDate && remoteData ? { ...remoteData, strategyName: appliedStrategy?.name || '无运行策略' } : awaitingLocalScan ? pendingScanData : localData);
+            const activeData = (() => {
+                const base = staticData || (isLiveDate && remoteData ? { ...remoteData, strategyName: appliedStrategy?.name || '无运行策略' } : awaitingLocalScan ? pendingScanData : localData);
+                // 数据降级到 mock 且无真实信号时，改写漏斗文案以避免误解
+                if (base?.provider === 'mock' && (!base.signals || base.signals.length === 0) && base.funnel) {
+                    const degradedFunnel = { ...base.funnel };
+                    if (degradedFunnel.s2 && degradedFunnel.s2.status === 'neutral') {
+                        degradedFunnel.s2 = { ...degradedFunnel.s2, text: '数据降级，信号不可信' };
+                    }
+                    return { ...base, funnel: degradedFunnel };
+                }
+                return base;
+            })();
             const signals = activeData.signals;
             const filteredSignals = signalBoardFilter === 'all' ? signals : signals.filter(row => stockBoardOf(row.id) === signalBoardFilter);
             const selectedBoardOption = STOCK_BOARD_OPTIONS.find(option => option.value === signalBoardFilter) || STOCK_BOARD_OPTIONS[0];
@@ -944,14 +957,37 @@
                 if (!isLiveDate) return onShowToast(staticData ? '收盘快照为只读，只生成次日观察清单' : '历史复盘为只读，不能下单');
                 if (positions.some(p => p.id === stock.id)) return onShowToast(`【${stock.name}】已在持仓中`);
                 setExecutedSignalIds([...new Set([...executedSignalIds, stock.id])]);
-                setPositions([{ id: stock.id, name: stock.name, entryDate: currentDate, entryPrice: '已委托', profit: '0.0%', status: 'normal', msg: '刚买入', strategyName: activeData.strategyName }, ...positions]);
-                onShowToast(`已下达【${stock.name}】买入委托`);
+                // 保存策略与信号追溯信息，以及因子数据供离场规则使用
+                setPositions([{
+                    id: stock.id, name: stock.name,
+                    entryDate: currentDate, entryPrice: '已委托', profit: '0.0%',
+                    status: 'normal', msg: '刚买入',
+                    strategyId: appliedStrategy?.id || '',
+                    strategyName: appliedStrategy?.name || activeData.strategyName,
+                    signalReason: stock.exitReason || '',
+                    _factor: { backtestReturn: stock.backtestReturn, maxLoss: stock.maxLoss, exitReason: stock.exitReason }
+                }, ...positions]);
+                onShowToast(`已下达【${stock.name}】买入委托 — ${appliedStrategy?.name || activeData.strategyName}`);
             };
 
             const handleSell = (id, name) => {
                 if (!canOperateHolding) return onShowToast('收盘快照为只读，不能离场');
                 const target = positions.find(p => p.id === id);
                 if (target) {
+                    // 基于买入时保存的因子数据应用离场规则
+                    const factor = target._factor;
+                    let exitReason = '手动操作 (平仓/斩仓)';
+                    if (factor && appliedStrategy) {
+                        const config = appliedStrategy.config || {};
+                        const s3Keys = config.s3Keys || [];
+                        if (s3Keys.includes('s3_hard') && (factor.maxLoss || 0) <= -8) {
+                            exitReason = '硬止损触发';
+                        } else if (s3Keys.includes('s3_trail') && (factor.backtestReturn || 0) > 8) {
+                            exitReason = '移动止盈回撤';
+                        } else if (factor.exitReason) {
+                            exitReason = factor.exitReason;
+                        }
+                    }
                     const newHistoryRec = {
                         id: 'tr_' + Date.now(),
                         code: target.id,
@@ -959,7 +995,9 @@
                         entry: target.entryDate || '未知',
                         exit: holdingActionDate,
                         return: target.profit,
-                        reason: '手动操作 (平仓/斩仓)',
+                        reason: exitReason,
+                        strategyId: target.strategyId || '',
+                        strategyName: target.strategyName || '',
                         status: target.status === 'danger' ? 'VIOLATION' : 'DISCIPLINE',
                         cost: target.status === 'danger' ? -500 : 0
                     };
@@ -990,6 +1028,15 @@
                     />
 
                     {showNotice && <NoticeStrip type={dataNoticeType} onDismiss={() => setShowNotice(false)}>{dataNotice}</NoticeStrip>}
+                    {hasStaticScan && (
+                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-blue-900/40 bg-blue-950/20 text-sm">
+                            <Icons.ArrowRight size={14} className="text-blue-400 shrink-0" />
+                            <span className="text-zinc-400 min-w-0">需要完整功能（实时扫描、模拟持仓、回测）？
+                                <a href="https://github.com/woodslope/leek-strategy" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline ml-1 font-medium">下载项目本地运行 →</a>
+                                <span className="text-zinc-600 ml-2 text-xs hidden sm:inline">bash start.sh 一键启动</span>
+                            </span>
+                        </div>
+                    )}
 
                     <div className="screenshot-monitor-grid flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-visible min-h-min">
                         <Card
@@ -1113,7 +1160,7 @@
                                             <td className="py-3 px-4 text-right"><button disabled={!isLiveDate} onClick={() => handleBuy(row)} className={`text-xs border px-3 py-1 rounded-md transition-colors ${isLiveDate ? 'bg-green-950 text-green-400 border-green-800/60 hover:bg-green-900' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{isLiveDate ? '购买' : '只读'}</button></td>
                                             </tr>
                                         ))}
-                                        {filteredSignals.length === 0 && <tr><td colSpan="4" className="text-center py-8 text-zinc-600">{awaitingLocalScan ? '尚未执行本地扫描' : signals.length > 0 ? '当前板块暂无符合条件标的' : remoteData ? '本次扫描未发现符合条件标的' : '暂无信号'}</td></tr>}
+                                        {filteredSignals.length === 0 && <tr><td colSpan="4" className="text-center py-8 text-zinc-600">{awaitingLocalScan ? '尚未执行本地扫描' : signals.length > 0 ? '当前板块暂无符合条件标的' : remoteData?.provider === 'mock' ? '⚠ 数据已降级到样本数据，信号不可作为交易参考' : remoteData ? '本次扫描未发现符合条件标的' : '暂无信号'}</td></tr>}
                                     </tbody>
                                 </table>
                             </Card>
@@ -1130,7 +1177,7 @@
                                                 <div className="flex items-start justify-between gap-3">
                                                     <button type="button" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName, reason: row.msg})} className="min-w-0 text-left">
                                                         <div className="font-mono text-sm text-blue-400">{row.id}</div>
-                                                        <div className="mt-1 text-sm text-zinc-200">{row.name}</div>
+                                                        <div className="mt-1 text-sm text-zinc-200">{row.name}{row.strategyName ? <span className="text-[10px] text-zinc-600 font-mono ml-1.5">{row.strategyName}</span> : null}</div>
                                                     </button>
                                                     <span className={`shrink-0 font-mono text-sm font-bold ${profitStyle}`}>{row.profit}</span>
                                                 </div>
@@ -1166,7 +1213,7 @@
                                         return (
                                             <tr key={row.id} className={`${rowStyle} transition-colors group`}>
                                             <td className="py-3 px-4 text-blue-400 cursor-pointer hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName, reason: row.msg})} >{row.id}</td>
-                                            <td className="py-3 px-4 text-zinc-200 font-sans">{row.name}</td><td className={`py-3 px-4 ${profitStyle}`}>{row.profit}</td>
+                                            <td className="py-3 px-4 text-zinc-200 font-sans">{row.name}{row.strategyName ? <span className="block text-[10px] text-zinc-600 font-mono mt-0.5">{row.strategyName}</span> : null}</td><td className={`py-3 px-4 ${profitStyle}`}>{row.profit}</td>
                                             <td className="py-3 px-4 flex items-center space-x-1.5">{row.status === 'danger' && <Icons.AlertTriangle size={14} className="text-red-500 shrink-0" />}<span className={msgStyle}>{cleanDisplayText(row.msg)}</span></td>
                                             <td className="py-3 px-4 text-right">{btn}</td>
                                             </tr>
@@ -1654,9 +1701,10 @@
             const toastTimerRef = useRef(null);
             const [selectedStock, setSelectedStock] = useState(null); // { code, name, strategyName, reason... }
             const [apiStatus, setApiStatus] = useState({ status: 'offline', label: '本地引擎', provider: 'local' });
+            const [serverDefaultParams, setServerDefaultParams] = useState(null);
             const [staticScan, setStaticScan] = useState(null);
 
-            const normalizedStrategies = strategies.map(normalizeStrategy);
+            const normalizedStrategies = strategies.map((s, i) => normalizeStrategy(s, i, serverDefaultParams));
             const appliedStrategy = normalizedStrategies.find(s => s.id === appliedStrategyId) || null;
 
             useEffect(() => {
@@ -1666,6 +1714,7 @@
                         if (cancelled) return;
                         setStaticScan(null);
                         setApiStatus({ status: 'online', label: dataSourceName(data.provider), provider: data.provider, warnings: data.warnings || [], providerOrder: data.providerOrder || [], configured: data.configured || {} });
+                        if (data.defaultParams) setServerDefaultParams(data.defaultParams);
                     })
                     .catch(() => {
                         Promise.all([
@@ -1736,7 +1785,7 @@
                     </div>
 
                     <div className="flex-1 flex overflow-hidden relative w-full bg-[#0D0E11]">
-                        {activeTab === '监控' && <ViewMonitor appliedStrategy={appliedStrategy} positions={positions} setPositions={setPositions} historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} executedSignalIds={executedSignalIds} setExecutedSignalIds={setExecutedSignalIds} apiStatus={apiStatus} staticScan={staticScan} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
+                        {activeTab === '监控' && <ViewMonitor appliedStrategy={appliedStrategy} positions={positions} setPositions={setPositions} historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} executedSignalIds={executedSignalIds} setExecutedSignalIds={setExecutedSignalIds} apiStatus={apiStatus} staticScan={staticScan} serverDefaultParams={serverDefaultParams} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
                         {activeTab === '历史' && <ViewHistory historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
                         {activeTab === '策略' && <ViewStrategy strategies={normalizedStrategies} setStrategies={setStrategies} appliedId={appliedStrategyId} setAppliedId={setAppliedStrategyId} onShowToast={showToast} />}
                         {activeTab === '回测' && <ViewBacktest strategies={normalizedStrategies} setStrategies={setStrategies} backtests={backtests} setBacktests={setBacktests} apiStatus={apiStatus} onShowToast={showToast} />}

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = ROOT / "config" / "default-strategy.json"
 
-DEFAULT_PARAMS = {
+# 硬编码兜底值，当配置文件缺失时使用
+_FALLBACK_PARAMS = {
     "s0_ma": "250",
     "s0_limit": "50",
     "s0_crash": "3",
@@ -22,21 +27,45 @@ DEFAULT_PARAMS = {
     "s2_super": "1",
     "s2_vol": "2.0",
     "s2_rsi_level": "30",
+    "s2_rsi_period": "14",
     "s2_main": "10",
     "s2_north_days": "5",
     "s2_north_pct": "0.1",
     "s3_hard": "-8.0",
+    "s3_break_ma": "20",
+    "s3_break_vol": "1.5",
+    "s3_trail": "10",
+    "s3_sun": "3",
+    "s3_fund": "5",
+    "s3_stag_vol": "3.0",
+    "s3_stag_gain": "1",
     "s3_market_limit": "50",
 }
+
+
+def _load_default_params() -> dict:
+    """从 config/default-strategy.json 加载默认策略参数，作为前后端单一来源。"""
+    try:
+        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        config = raw.get("config", raw)
+        params = config.get("params", {})
+        if params:
+            return {**params}
+    except Exception:
+        pass
+    return dict(_FALLBACK_PARAMS)
+
+
+DEFAULT_PARAMS = _load_default_params()
 
 
 def normalize_config(config: dict | None) -> dict:
     config = config or {}
     return {
         **config,
-        "s1Keys": config.get("s1Keys") or ["s1_drop", "s1_close", "s1_vol_panic", "s1_inverse"],
-        "s2Keys": config.get("s2Keys") or ["s2_ma", "s2_fund", "s2_macd", "s2_super"],
-        "s3Keys": config.get("s3Keys") or ["s3_hard", "s3_break", "s3_trail"],
+        "s1Keys": config["s1Keys"] if "s1Keys" in config else ["s1_drop", "s1_close", "s1_vol_panic", "s1_inverse"],
+        "s2Keys": config["s2Keys"] if "s2Keys" in config else ["s2_ma", "s2_fund", "s2_macd", "s2_super"],
+        "s3Keys": config["s3Keys"] if "s3Keys" in config else ["s3_hard", "s3_break", "s3_trail"],
         "params": {**DEFAULT_PARAMS, **(config.get("params") or {})},
     }
 
@@ -76,25 +105,53 @@ def scan(config: dict, market: dict, executed_ids: list[str] | None = None, posi
 
 def backtest(config: dict, markets: list[dict], name: str, range_text: str) -> dict:
     config = normalize_config(config)
+    # 按日期索引 market 快照，用于查找离场日的真实价格
+    market_by_date = {m.get("date", ""): m for m in markets}
+    trading_dates = sorted(market_by_date.keys())
     trades = []
-    for market in markets:
+    held: dict[str, str] = {}  # code -> exit_date，持仓期间不再重复入场
+
+    for entry_idx, market in enumerate(markets):
+        entry_date = market.get("date", "")
+        # 释放已到离场日的持仓
+        held = {code: ed for code, ed in held.items() if ed > entry_date}
+
         result = scan(config, market)
+        # 离场日：往后找第 5 个实际交易日（约一周），没有则取最后一个
+        exit_idx = min(entry_idx + 5, len(trading_dates) - 1)
+        exit_date = trading_dates[exit_idx] if exit_idx < len(trading_dates) else entry_date
+        exit_market = market_by_date.get(exit_date, market)
+
         for index, signal in enumerate(result["signals"]):
-            stock = next((s for s in market.get("stocks", []) if s["id"] == signal["id"]), None)
+            code = signal["id"]
+            if code in held:
+                continue  # 持仓中，不重复入场
+
+            stock = next((s for s in market.get("stocks", []) if s["id"] == code), None)
             if not stock:
                 continue
             adjusted, reason = _apply_exit_rules(config, market, stock)
-            entry_price = 20 + float(stock.get("volRatio", 1)) * 12 + index * 3
+            entry_price = float(stock.get("close", 0)) or (20 + float(stock.get("volRatio", 1)) * 12 + index * 3)
+
+            # 离场价：用离场日同只股票的真实收盘价；找不到时退回估算
+            exit_stock = next((s for s in exit_market.get("stocks", []) if s["id"] == code), None)
+            if exit_stock and exit_stock.get("close"):
+                exit_price = float(exit_stock["close"])
+            else:
+                exit_price = entry_price * (1 + adjusted / 100)
+
+            held[code] = exit_date  # 标记持仓
+
             trades.append(
                 {
-                    "id": f"{market.get('date')}_{signal['id']}_{index}",
-                    "code": signal["id"],
+                    "id": f"{entry_date}_{code}_{index}",
+                    "code": code,
                     "name": signal["name"],
-                    "entry": market.get("date"),
+                    "entry": entry_date,
                     "entryPrice": f"{entry_price:.1f}",
-                    "exit": _plus_days(market.get("date"), 7),
-                    "exitPrice": f"{entry_price * (1 + adjusted / 100):.1f}",
-                    "return": _fmt(adjusted),
+                    "exit": exit_date,
+                    "exitPrice": f"{exit_price:.1f}",
+                    "return": _fmt((exit_price / entry_price - 1) * 100 if entry_price else 0),
                     "reason": reason,
                     "maxLoss": float(stock.get("maxLoss", 0)),
                 }
@@ -218,13 +275,3 @@ def _parse_pct(value: str) -> float:
 
 def _fmt(value: float) -> str:
     return f"{'+' if value >= 0 else ''}{value:.1f}%"
-
-
-def _plus_days(date_text: str | None, days: int) -> str:
-    if not date_text:
-        return ""
-    try:
-        base = datetime.strptime(date_text, "%Y-%m-%d")
-        return base.replace(day=min(28, base.day + days)).strftime("%Y-%m-%d")
-    except Exception:
-        return date_text

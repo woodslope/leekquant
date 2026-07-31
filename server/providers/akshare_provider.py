@@ -83,6 +83,7 @@ class AkshareProvider:
         return {
             "id": code,
             "name": name,
+            "close": self._num(row.get("最新价")),
             "closeAbovePrev": pct >= 0,
             "closeAboveOpen": self._num(row.get("最新价")) >= self._num(row.get("今开")),
             "highDays": high_days,

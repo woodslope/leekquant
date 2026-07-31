@@ -163,6 +163,7 @@ class SinaProvider:
         return {
             "id": code,
             "name": name,
+            "close": latest,
             "closeAbovePrev": latest >= prev_close if prev_close else pct >= 0,
             "closeAboveOpen": latest >= open_price if open_price else pct >= 0,
             "highDays": high_days,

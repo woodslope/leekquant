@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from server.engine.rules import backtest, scan  # noqa: E402
+from server.engine.rules import DEFAULT_PARAMS, backtest, scan  # noqa: E402
 from server.providers.chain import build_provider, build_providers, call_provider_method, provider_config_status  # noqa: E402
 from server.providers.mock_provider import MockProvider  # noqa: E402
 from server.storage import CacheStore  # noqa: E402
@@ -41,7 +41,7 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             provider, warnings = get_provider()
-            return self.json({"ok": True, "provider": provider.name, "warnings": warnings, "cache": STORE.cache_info(), **provider_config_status("auto")})
+            return self.json({"ok": True, "provider": provider.name, "warnings": warnings, "cache": STORE.cache_info(), "defaultParams": DEFAULT_PARAMS, **provider_config_status("auto")})
         if parsed.path == "/api/a/market/snapshot":
             return self.handle_market_snapshot()
         if parsed.path.startswith("/api/a/stocks/") and parsed.path.endswith("/daily"):
