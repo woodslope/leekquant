@@ -1,11 +1,11 @@
 {
   "ok": true,
   "mode": "close-scan",
-  "runAt": "2026-08-05 19:01:54",
-  "tradeDate": "2026-08-05",
+  "runAt": "2026-08-06 19:02:58",
+  "tradeDate": "2026-08-06",
   "provider": "tickflow",
   "warnings": [],
   "latestFile": "public-data/latest-scan.json",
   "marketFile": "public-data/market-snapshot.json",
-  "historyFile": "public-data/history/2026-08-05.json"
+  "historyFile": "public-data/history/2026-08-06.json"
 }
