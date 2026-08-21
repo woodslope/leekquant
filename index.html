@@ -26,14 +26,6 @@
         /* 移除数字输入框的箭头 */
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        @media (min-width: 1200px) and (min-height: 700px) and (max-height: 950px) {
-            .screenshot-monitor-grid { min-height: 0 !important; max-height: calc(100vh - 308px) !important; height: calc(100vh - 308px) !important; flex: 0 1 auto !important; overflow: hidden; }
-            .screenshot-monitor-funnel { min-height: 0 !important; }
-            .screenshot-monitor-funnel > div:last-child { overflow-y: auto; }
-            .screenshot-monitor-stack { min-height: 0; padding-bottom: 0 !important; }
-            .screenshot-monitor-card { flex: 1 1 0%; min-height: 0 !important; }
-            .screenshot-monitor-card > div:last-child { min-height: 0; overflow: auto; }
-        }
     </style>
 </head>
 <body class="bg-[#0D0E11] text-zinc-300 antialiased overflow-hidden">
@@ -52,6 +44,27 @@
                     return JSON.parse(stickyValue);
                 } catch (error) {
                     window.localStorage.removeItem(key);
+                    return defaultValue;
+                }
+            });
+            useEffect(() => {
+                window.localStorage.setItem(key, JSON.stringify(value));
+            }, [key, value]);
+            return [value, setValue];
+        }
+
+        function useSeedAwareState(defaultValue, key, legacyKey, legacySeed) {
+            const [value, setValue] = useState(() => {
+                const currentValue = window.localStorage.getItem(key);
+                if (currentValue !== null) {
+                    try { return JSON.parse(currentValue); } catch (error) { window.localStorage.removeItem(key); }
+                }
+                const legacyValue = window.localStorage.getItem(legacyKey);
+                if (legacyValue === null) return defaultValue;
+                try {
+                    const parsed = JSON.parse(legacyValue);
+                    return JSON.stringify(parsed) === JSON.stringify(legacySeed) ? defaultValue : parsed;
+                } catch (error) {
                     return defaultValue;
                 }
             });
@@ -285,6 +298,7 @@
             .trim();
         const dataSourceName = (provider) => provider === 'tushare' ? 'Tushare 历史日线' : provider === 'akshare' ? 'AKShare 历史日线' : provider === 'baostock' ? 'BaoStock 历史日线备用' : provider === 'sina' ? '新浪行情兜底' : provider === 'tickflow' ? 'TickFlow 日线数据' : provider === 'demo' ? '固定演示数据' : provider === 'mock' ? '样本数据' : provider === 'static' ? '收盘快照' : '本地引擎';
         const dataSourceTier = (provider) => ['tushare', 'tickflow', 'akshare', 'baostock'].includes(provider) ? '数据可信层级：历史日线源' : provider === 'sina' ? '数据可信层级：行情兜底源' : ['demo', 'mock', 'local'].includes(provider) ? '数据可信层级：演示数据' : '数据可信层级：收盘静态快照';
+        const indicatorConfidenceLabel = (conf) => conf === 'real' ? '真实指标' : conf === 'approximate' ? '近似指标' : '';
         const STOCK_BOARD_OPTIONS = [
             { value: 'all', label: '全部' },
             { value: 'main', label: '主板' },
@@ -448,7 +462,7 @@
             };
         };
 
-        const runBacktest = (config, name, range) => {
+        const runBacktest = (config, name, range, capital = '100000') => {
             const strategy = { name, config: createRuleConfig(config) };
             const normalizedConfig = createRuleConfig(config);
             const trades = HISTORICAL_MARKET.flatMap(day => {
@@ -484,10 +498,11 @@
                 winRate,
                 synced: false,
                 strategyId: null,
+                capital: String(capital || '100000'),
                 config: createRuleConfig(config),
                 trades: trades.length,
                 details: {
-                    summary: { return: formatReturn(totalReturn), annualized: formatReturn(totalReturn / 2), sharpe, maxDrawdown: formatReturn(maxDrawdown), winRate, trades: trades.length, avgHold: '7天' },
+                    summary: { return: formatReturn(totalReturn), annualized: formatReturn(totalReturn / 2), sharpe, maxDrawdown: formatReturn(maxDrawdown), winRate, trades: trades.length, avgHold: '7天', capital: String(capital || '100000') },
                     trades
                 }
             };
@@ -502,14 +517,21 @@
             ]
         };
 
-        const apiPost = async (path, payload) => {
-            const res = await fetch(path, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!res.ok) throw new Error(`API ${path} ${res.status}`);
-            return res.json();
+        const apiPost = async (path, payload, timeoutMs = 30000) => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(path, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+                if (!res.ok) throw new Error(`API ${path} ${res.status}`);
+                return res.json();
+            } finally {
+                clearTimeout(timeoutId);
+            }
         };
 
         const fetchJson = async (path) => {
@@ -785,7 +807,7 @@
         const ViewMonitor = ({ appliedStrategy, positions, setPositions, historyTrades, setHistoryTrades, executedSignalIds, setExecutedSignalIds, apiStatus, staticScan, serverDefaultParams, onShowToast, onOpenStockDetail }) => {
             const localDemoDate = "2026-05-20";
             const [currentDate, setCurrentDate] = useState(localDemoDate);
-            const [expandedSteps, setExpandedSteps] = useState({ s0: false, s1: true, s2: false });
+            const [expandedSteps, setExpandedSteps] = useState({ s0: true, s1: true, s2: true });
             const [remoteData, setRemoteData] = useState(null);
             const [showNotice, setShowNotice] = useState(true);
             const [isScanning, setIsScanning] = useState(false);
@@ -838,6 +860,7 @@
             const filteredSignals = signalBoardFilter === 'all' ? signals : signals.filter(row => stockBoardOf(row.id) === signalBoardFilter);
             const selectedBoardOption = STOCK_BOARD_OPTIONS.find(option => option.value === signalBoardFilter) || STOCK_BOARD_OPTIONS[0];
             const currentProvider = staticData?.provider || remoteData?.provider || apiStatus.provider || activeData?.provider || 'local';
+            const canOperateSimulation = canOperateHolding && apiStatus.status === 'online' && currentProvider !== 'mock';
             const dataSourceLabel = dataSourceName(currentProvider);
             const dataNoticeType = activeData?.provider === 'mock' || apiStatus.provider === 'local' ? 'warning' : 'neutral';
             const dataTierNotice = `${dataSourceTier(currentProvider)}。`;
@@ -859,7 +882,7 @@
                 : remoteData?.provider === 'mock'
                 ? `当前扫描已降级到样本数据，适合展示产品流程，不适合作为真实交易依据。${dataTierNotice}${providerFallbackNotice}`
                 : awaitingLocalScan
-                ? `本地接口已连接，点击执行扫描后会按运行策略筛选股票。${dataTierNotice}${providerOrderNotice}${providerFallbackNotice}${tushareNotice}`
+                ? `已连接历史日线数据。第 1 步确认运行策略，第 2 步执行扫描，第 3 步查看并选择观察标的。${dataTierNotice}`
                 : remoteData
                 ? `当前为 ${latestScanDate} 本地扫描结果，数据源：${dataSourceLabel}，请结合数据源状态理解扫描结果。${dataTierNotice}${providerOrderNotice}${providerFallbackNotice}${tushareNotice}`
                 : apiStatus.provider === 'local'
@@ -868,8 +891,8 @@
             const scanDateLabel = remoteData ? '扫描日期' : awaitingLocalScan ? '扫描状态' : '演示日期';
             const scanDateValue = remoteData ? latestScanDate : awaitingLocalScan ? '待扫描' : currentDate;
             const scanDateTitle = remoteData ? '最新扫描日期' : awaitingLocalScan ? '尚未执行扫描' : '本地演示日期';
-            const signalTitle = staticData ? '收盘观察信号' : remoteData && isLiveDate ? '本地扫描信号' : isLiveDate ? '今日买入信号' : '历史买入信号';
-            const signalStatLabel = hasStaticScan ? "观察信号" : apiStatus.status === 'online' ? "扫描信号" : "买入信号";
+            const signalTitle = staticData ? '收盘观察信号' : remoteData && isLiveDate ? '本地观察信号' : isLiveDate ? '今日观察信号' : '历史观察信号';
+            const signalStatLabel = apiStatus.status === 'online' ? "扫描信号" : "观察信号";
             const scanButtonText = hasStaticScan ? '只读快照' : isScanning ? '扫描中' : '执行扫描';
             const scanButtonTitle = hasStaticScan ? 'GitHub Pages 使用固定演示数据；真实扫描请下载后启动本地服务' : canRunScan ? '按当前运行策略重新执行扫描' : !appliedStrategy ? '请先在策略页应用一个策略' : '本地接口未连接时使用演示数据';
             const scanButtonAccessibleTitle = isScanning ? '扫描中，请稍候' : scanButtonTitle;
@@ -954,7 +977,8 @@
             const toggleStep = (step) => setExpandedSteps(p => ({ ...p, [step]: !p[step] }));
 
             const handleBuy = (stock) => {
-                if (!isLiveDate) return onShowToast(staticData ? '收盘快照为只读，只生成次日观察清单' : '历史复盘为只读，不能下单');
+                if (!canOperateSimulation) return onShowToast(staticData ? '收盘快照为只读，只生成次日观察清单' : '当前为演示或离线数据，只能查看，不能修改模拟持仓');
+                if (!isLiveDate) return onShowToast('历史复盘为只读，不能修改模拟持仓');
                 if (positions.some(p => p.id === stock.id)) return onShowToast(`【${stock.name}】已在持仓中`);
                 setExecutedSignalIds([...new Set([...executedSignalIds, stock.id])]);
                 // 保存策略与信号追溯信息，以及因子数据供离场规则使用
@@ -967,11 +991,12 @@
                     signalReason: stock.exitReason || '',
                     _factor: { backtestReturn: stock.backtestReturn, maxLoss: stock.maxLoss, exitReason: stock.exitReason }
                 }, ...positions]);
-                onShowToast(`已下达【${stock.name}】买入委托 — ${appliedStrategy?.name || activeData.strategyName}`);
+                onShowToast(`已将【${stock.name}】加入模拟持仓 — ${appliedStrategy?.name || activeData.strategyName}`);
             };
 
             const handleSell = (id, name) => {
                 if (!canOperateHolding) return onShowToast('收盘快照为只读，不能离场');
+                if (!canOperateSimulation) return onShowToast('当前为演示或离线数据，只能查看，不能修改模拟持仓');
                 const target = positions.find(p => p.id === id);
                 if (target) {
                     // 基于买入时保存的因子数据应用离场规则
@@ -1004,13 +1029,13 @@
                     setHistoryTrades([newHistoryRec, ...historyTrades]);
                 }
                 setPositions(positions.filter(p => p.id !== id));
-                onShowToast(`已执行【${name}】离场并同步至历史`);
+                onShowToast(`已记录【${name}】模拟离场，并同步至复盘记录`);
             };
 
             return (
                 <PageShell>
                     <PageHeader
-                        title={hasStaticScan ? "收盘策略复盘" : "策略监控台"}
+                        title={hasStaticScan ? "收盘策略复盘" : "收盘复盘台"}
                         subtitle={hasStaticScan ? "固定演示数据完整呈现策略漏斗、观察信号和持仓风控，适合在线展示与截图。" : "基于历史日线和收盘数据执行扫描；每个交易日收盘后生成明日观察清单，不作为盘中实时买卖提醒。"}
                         actions={
                             <button onClick={() => handleRunScan()} disabled={scanButtonDisabled} aria-disabled={!canRunScan || scanButtonDisabled} title={scanButtonAccessibleTitle} className={scanButtonClass}>
@@ -1021,7 +1046,7 @@
                             <>
                                 <StatBlock label="运行策略" value={cleanDisplayText(activeData.strategyName) || '未应用'} tone={activeData.strategyName !== "无运行策略" ? 'text-blue-400' : 'text-zinc-500'} />
                                 <StatBlock label={signalStatLabel} value={`${signals.length} 只`} tone={signals.length ? 'text-green-400' : 'text-zinc-400'} helper={isLiveDate ? '今日候选' : '历史复盘'} />
-                                <StatBlock label="模拟持仓" value={`${positions.length} 笔`} tone={positions.length ? 'text-blue-300' : 'text-zinc-400'} helper="当前持仓" />
+                                <StatBlock label="模拟持仓" value={`${positions.length} 笔`} tone={positions.length ? 'text-blue-300' : 'text-zinc-400'} helper={positions.length ? '当前持仓' : '尚未加入'} />
                                 <StatBlock label="市场开关" value={activeData.funnel.s0.text} tone={activeData.funnel.s0.status === 'pass' ? 'text-green-400' : 'text-red-400'} helper="大盘环境" />
                             </>
                         }
@@ -1038,7 +1063,7 @@
                         </div>
                     )}
 
-                    <div className="screenshot-monitor-grid flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-visible min-h-min">
+                    <div className="flex flex-col lg:flex-row items-stretch gap-4 md:gap-6 overflow-visible w-full min-h-min">
                         <Card
                             title={<><Icons.Activity className="mr-2 text-zinc-400" size={16}/>策略漏斗总览</>}
                             actions={
@@ -1056,7 +1081,7 @@
                                     </div>
                                 )
                             }
-                            className="screenshot-monitor-funnel w-full lg:w-[360px] shrink-0 min-h-[350px]"
+                            className="w-full lg:w-[360px] shrink-0 min-h-[520px]"
                             headerClass="px-4 py-3"
                             bodyClass="p-4 space-y-4"
                         >
@@ -1088,7 +1113,7 @@
                             ))}
                         </Card>
 
-                        <div className="screenshot-monitor-stack flex-1 flex flex-col gap-4 md:gap-6 min-w-0 pb-2">
+                        <div className="flex-1 flex flex-col gap-4 md:gap-6 min-w-0 self-stretch lg:min-h-[760px]">
                             <Card
                                 title={<><Icons.Play className="mr-2 text-green-500" size={16}/>{signalTitle}<span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{signals.length}</span></>}
                                 actions={
@@ -1144,7 +1169,7 @@
                                         </div>
                                     </div>
                                 }
-                                className="screenshot-monitor-card min-h-[300px] flex flex-col shrink-0"
+                                className="min-h-[360px] flex flex-col flex-1 shrink-0"
                                 headerClass="px-4 py-3"
                                 bodyClass="p-0 overflow-x-auto"
                             >
@@ -1157,7 +1182,7 @@
                                             <tr key={row.id} className="hover:bg-zinc-800/30 group">
                                             <td className="py-3 px-4 text-blue-400 cursor-pointer hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName})}>{row.id}</td>
                                             <td className="py-3 px-4 text-zinc-200 font-sans">{row.name}</td><td className="py-3 px-4 text-zinc-400">{row.reason}</td>
-                                            <td className="py-3 px-4 text-right"><button disabled={!isLiveDate} onClick={() => handleBuy(row)} className={`text-xs border px-3 py-1 rounded-md transition-colors ${isLiveDate ? 'bg-green-950 text-green-400 border-green-800/60 hover:bg-green-900' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{isLiveDate ? '购买' : '只读'}</button></td>
+                                            <td className="py-3 px-4 text-right"><button disabled={!isLiveDate || !canOperateSimulation} onClick={() => handleBuy(row)} className={`text-xs border px-3 py-1 rounded-md transition-colors ${isLiveDate && canOperateSimulation ? 'bg-green-950 text-green-400 border-green-800/60 hover:bg-green-900' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{isLiveDate && canOperateSimulation ? '加入模拟持仓' : '只读'}</button></td>
                                             </tr>
                                         ))}
                                         {filteredSignals.length === 0 && <tr><td colSpan="4" className="text-center py-8 text-zinc-600">{awaitingLocalScan ? '尚未执行本地扫描' : signals.length > 0 ? '当前板块暂无符合条件标的' : remoteData?.provider === 'mock' ? '⚠ 数据已降级到样本数据，信号不可作为交易参考' : remoteData ? '本次扫描未发现符合条件标的' : '暂无信号'}</td></tr>}
@@ -1165,10 +1190,10 @@
                                 </table>
                             </Card>
 
-                            <Card title={<><Icons.Briefcase className="mr-2 text-blue-500" size={16}/>当前持仓风控<span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{positions.length}</span></>} className="screenshot-monitor-card min-h-[300px] flex flex-col shrink-0" headerClass="px-4 py-3" bodyClass="p-0 overflow-x-auto">
+                            <Card title={<><Icons.Briefcase className="mr-2 text-blue-500" size={16}/>当前持仓风控<span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{positions.length}</span></>} className="min-h-[360px] flex flex-col flex-1 shrink-0" headerClass="px-4 py-3" bodyClass="p-0 overflow-x-auto">
                                 <div className="md:hidden space-y-3 p-3">
                                     {positions.map(row => {
-                                        const holdingActionLabel = row.status === 'warning' ? '离场' : row.status === 'danger' ? '斩仓' : '';
+                                        const holdingActionLabel = row.status === 'warning' ? '记录离场' : row.status === 'danger' ? '记录止损' : '';
                                         const profitStyle = row.profit.startsWith('+') ? "text-green-500" : (row.profit.startsWith('-') ? "text-red-500" : "text-zinc-400");
                                         const riskStyle = row.status === 'danger' ? 'border-red-900/50 bg-red-950/15' : row.status === 'warning' ? 'border-yellow-900/50 bg-yellow-950/15' : 'border-zinc-800/60 bg-[#111216]';
                                         const actionStyle = row.status === 'danger' ? 'bg-red-900/80 text-white border-red-700' : 'bg-yellow-900/60 text-yellow-400 border-yellow-700/60';
@@ -1187,13 +1212,13 @@
                                                         <span className={`text-xs ${row.status === 'danger' ? 'text-red-400 font-bold' : row.status === 'warning' ? 'text-yellow-500 font-medium' : 'text-zinc-500'}`}>{cleanDisplayText(row.msg)}</span>
                                                     </div>
                                                     {holdingActionLabel ? (
-                                                        <button disabled={!canOperateHolding} onClick={() => handleSell(row.id, row.name)} aria-label={`${row.name}：${canOperateHolding ? holdingActionLabel : '只读'}`} className={`shrink-0 text-xs border px-3 py-1.5 rounded-md transition-colors ${canOperateHolding ? actionStyle : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateHolding ? holdingActionLabel : '只读'}</button>
+                                                        <button disabled={!canOperateSimulation} onClick={() => handleSell(row.id, row.name)} aria-label={`${row.name}：${canOperateSimulation ? holdingActionLabel : '只读'}`} className={`shrink-0 text-xs border px-3 py-1.5 rounded-md transition-colors ${canOperateSimulation ? actionStyle : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateSimulation ? holdingActionLabel : '只读'}</button>
                                                     ) : <span className="shrink-0 text-zinc-600">--</span>}
                                                 </div>
                                             </div>
                                         );
                                     })}
-                                    {positions.length === 0 && <div className="py-8 text-center text-sm text-zinc-600">暂无持仓 (数据已同步保存)</div>}
+                                    {positions.length === 0 && <div className="py-8 text-center text-sm text-zinc-600">暂无模拟持仓；完成扫描后可将观察标的加入这里</div>}
                                 </div>
                                 <table className="hidden md:table w-full text-sm text-left min-w-[600px]">
                                     <thead className="text-xs text-zinc-500 border-b border-zinc-800/60 sticky top-0 bg-[#16181D] z-10">
@@ -1205,10 +1230,10 @@
                                         let msgStyle = "text-zinc-500 font-sans text-xs"; let btn = <span className="text-zinc-600">--</span>;
                                         if (row.status === 'warning') {
                                             rowStyle = "bg-yellow-950/20 hover:bg-yellow-950/30"; msgStyle = "text-yellow-500 font-sans text-xs font-medium";
-                                            btn = <button disabled={!canOperateHolding} onClick={()=>handleSell(row.id, row.name)} className={`text-xs border px-3 py-1 rounded-md ${canOperateHolding ? 'bg-yellow-900/60 text-yellow-400 border-yellow-700/60' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateHolding ? '离场' : '只读'}</button>;
+                                            btn = <button disabled={!canOperateSimulation} onClick={()=>handleSell(row.id, row.name)} className={`text-xs border px-3 py-1 rounded-md ${canOperateSimulation ? 'bg-yellow-900/60 text-yellow-400 border-yellow-700/60' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateSimulation ? '记录离场' : '只读'}</button>;
                                         } else if (row.status === 'danger') {
                                             rowStyle = "bg-red-950/20 hover:bg-red-950/30"; msgStyle = "text-red-400 font-sans text-xs font-bold";
-                                            btn = <button disabled={!canOperateHolding} onClick={()=>handleSell(row.id, row.name)} className={`text-xs border px-3 py-1 rounded-md ${canOperateHolding ? 'bg-red-900/80 text-white border-red-700' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateHolding ? '斩仓' : '只读'}</button>;
+                                            btn = <button disabled={!canOperateSimulation} onClick={()=>handleSell(row.id, row.name)} className={`text-xs border px-3 py-1 rounded-md ${canOperateSimulation ? 'bg-red-900/80 text-white border-red-700' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{canOperateSimulation ? '记录止损' : '只读'}</button>;
                                         }
                                         return (
                                             <tr key={row.id} className={`${rowStyle} transition-colors group`}>
@@ -1219,7 +1244,7 @@
                                             </tr>
                                         )
                                         })}
-                                        {positions.length === 0 && <tr><td colSpan="5" className="text-center py-8 text-zinc-600">暂无持仓 (数据已同步保存)</td></tr>}
+                                        {positions.length === 0 && <tr><td colSpan="5" className="text-center py-8 text-zinc-600">暂无模拟持仓；完成扫描后可将观察标的加入这里</td></tr>}
                                     </tbody>
                                 </table>
                             </Card>
@@ -1232,8 +1257,9 @@
         // ==========================================
         // 子视图：2. 策略页 (Strategy)
         // ==========================================
-        const ViewStrategy = ({ strategies, setStrategies, appliedId, setAppliedId, onShowToast }) => {
+        const ViewStrategy = ({ strategies, setStrategies, appliedId, setAppliedId, setAppliedStrategySnapshot, onShowToast }) => {
             const [activeCardId, setActiveCardId] = useStickyState(appliedId || strategies[0]?.id || null, 'lq_activeStrategyCardId');
+            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
             const hasActiveStrategy = strategies.some(s => s.id === activeCardId);
             const activeStrategy = strategies.find(s => s.id === activeCardId) || strategies.find(s => s.id === appliedId) || strategies[0];
             const strategyIdsKey = strategies.map(s => s.id).join(',');
@@ -1243,6 +1269,12 @@
                 const fallbackId = appliedId && strategies.some(s => s.id === appliedId) ? appliedId : strategies[0]?.id || null;
                 if (activeCardId !== fallbackId) setActiveCardId(fallbackId);
             }, [hasActiveStrategy, activeCardId, appliedId, strategyIdsKey]);
+
+            useEffect(() => {
+                if (!hasUnsavedChanges) return;
+                const timer = setTimeout(() => setHasUnsavedChanges(false), 500);
+                return () => clearTimeout(timer);
+            }, [hasUnsavedChanges, strategies]);
 
             const handleCreateStrategy = () => {
                 const newStrategy = {
@@ -1261,6 +1293,7 @@
             const handleNameChange = (e) => {
                 const newName = e.target.value;
                 setStrategies(strategies.map(s => s.id === activeCardId ? { ...s, name: newName } : s));
+                setHasUnsavedChanges(true);
             };
 
             const handleDeleteStrategy = (e, id, name) => {
@@ -1270,6 +1303,7 @@
                 setStrategies(newStrategies);
                 if (activeCardId === id) setActiveCardId(newStrategies[0]?.id || null);
                 if (appliedId === id) setAppliedId(null);
+                if (appliedId === id) setAppliedStrategySnapshot(null);
                 onShowToast(`策略【${name}】已删除`);
             };
 
@@ -1279,17 +1313,21 @@
 
             const handleConfigChange = (nextConfig) => {
                 updateActiveStrategy({ config: nextConfig, description: strategyRuleSummary(nextConfig) });
+                setHasUnsavedChanges(true);
             };
 
             const handleApply = () => {
                 setActiveCardId(activeStrategy.id);
                 setAppliedId(activeStrategy.id);
+                setAppliedStrategySnapshot(activeStrategy);
                 setStrategies(strategies.map(s => ({ ...s, status: s.id === activeStrategy.id ? 'applied' : 'idle' })));
+                setHasUnsavedChanges(false);
                 onShowToast(`已应用【${activeStrategy.name}】`);
             };
 
             const handleCancelApply = () => {
                 setAppliedId(null);
+                setAppliedStrategySnapshot(null);
                 setStrategies(strategies.map(s => ({ ...s, status: 'idle' })));
                 onShowToast('已取消当前运行策略');
             };
@@ -1347,16 +1385,16 @@
                                 <div className="flex flex-col py-1">
                                     <input type="text" value={cleanDisplayText(activeStrategy.name)} onChange={handleNameChange} placeholder="请输入策略名称"
                                         className="text-lg md:text-xl font-bold text-zinc-100 bg-transparent hover:bg-zinc-800/50 focus:bg-[#111216] focus:ring-1 focus:ring-zinc-700 outline-none rounded-md px-2 -ml-2 transition-colors w-[200px] md:w-[400px]" />
-                                    <p className="text-[10px] font-mono text-zinc-500 ml-1 mt-0.5">来源: {activeStrategy.source} | 最后更新: {activeStrategy.updatedAt}</p>
+                                    <p className="text-[10px] font-mono text-zinc-500 ml-1 mt-0.5">来源: {activeStrategy.source} | {hasUnsavedChanges ? <span className="text-yellow-500">正在自动保存…</span> : `已自动保存 · ${activeStrategy.updatedAt}`}</p>
                                 </div>
                             ) : "未选择策略"
                         }
                         actions={
                             activeStrategy && (
                                 <div className="flex space-x-3 shrink-0">
-                                    <button onClick={() => onShowToast('配置已保存到策略库')} className="px-3 md:px-4 py-1.5 rounded-md border border-zinc-700 text-zinc-300 text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center whitespace-nowrap">
-                                        <Icons.Save size={14} className="mr-2"/> 保存
-                                    </button>
+                                    <span className="hidden lg:inline-flex items-center px-3 py-1.5 text-xs text-zinc-500 whitespace-nowrap">
+                                        <Icons.Save size={13} className="mr-1.5"/> 自动保存
+                                    </span>
                                     {appliedId === activeStrategy.id ? (
                                         <button onClick={handleCancelApply} className="px-3 md:px-4 py-1.5 rounded-md bg-zinc-800 text-red-400 text-sm font-medium hover:bg-zinc-700 transition-colors flex items-center border border-zinc-700 whitespace-nowrap">
                                         <Icons.XCircle size={14} className="mr-2"/> 取消应用
@@ -1480,7 +1518,7 @@
                 if (isStartingBacktest) return;
                 setIsStartingBacktest(true);
                 if (apiStatus.status === 'online') {
-                    apiPost('/api/a/backtest', { config: draft.config, name: draft.name.trim(), range: draft.range })
+                    apiPost('/api/a/backtest', { config: draft.config, name: draft.name.trim(), range: draft.range, capital: Number(draft.capital) }, 8000)
                         .then(data => {
                             const newBt = data.backtest;
                             setBacktests([newBt, ...backtests]);
@@ -1489,17 +1527,17 @@
                             onShowToast(`回测【${newBt.name}】已完成 (${dataSourceName(data.provider)})`);
                         })
                         .catch(() => {
-                            const newBt = runBacktest(draft.config, draft.name.trim(), draft.range);
+                            const newBt = runBacktest(draft.config, draft.name.trim(), draft.range, draft.capital);
                             setBacktests([newBt, ...backtests]);
                             setDetailId(newBt.id);
                             setIsCreating(false);
-                            onShowToast(`回测【${newBt.name}】已完成 (本地引擎)`);
+                            onShowToast(`历史数据请求超时，已用本地演示引擎完成【${newBt.name}】`);
                         }).finally(() => {
                             setIsStartingBacktest(false);
                         });
                     return;
                 }
-                const newBt = runBacktest(draft.config, draft.name.trim(), draft.range);
+                const newBt = runBacktest(draft.config, draft.name.trim(), draft.range, draft.capital);
                 setBacktests([newBt, ...backtests]);
                 setDetailId(newBt.id);
                 setIsCreating(false);
@@ -1557,7 +1595,7 @@
                     <PageHeader
                         eyebrow="回测结果"
                         title={`回测详情：${bt.name}`}
-                        subtitle={`测试区间：${bt.range}。当前回测结果用于验证策略流程和展示配置沉淀。`}
+                        subtitle={`测试区间：${bt.range} · 初始资金：¥${Number(bt.capital || details.summary.capital || 100000).toLocaleString('zh-CN')}。结果仅用于验证策略流程，不作为投资依据。`}
                         actions={<button onClick={() => setDetailId(null)} className="text-zinc-400 hover:text-zinc-200 flex items-center text-sm font-medium transition-colors"><Icons.ArrowRight className="mr-1 rotate-180" size={14} /> 返回列表</button>}
                         stats={
                             <>
@@ -1578,9 +1616,6 @@
                             <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-4"><div className="text-zinc-500 text-xs font-mono mb-1">最大回撤</div><div className="text-xl font-bold text-red-500">{details.summary.maxDrawdown}</div></div>
                             <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-4"><div className="text-zinc-500 text-xs font-mono mb-1">胜率</div><div className="text-xl font-bold text-blue-400">{details.summary.winRate}</div></div>
                             <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-4"><div className="text-zinc-500 text-xs font-mono mb-1">交易笔数</div><div className="text-xl font-bold text-zinc-200">{details.summary.trades} 笔</div></div>
-                        </div>
-                        <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-6 flex items-center justify-center text-zinc-600 font-mono h-48 shadow-inner shrink-0">
-                            [ 图表占位：此处渲染 ECharts 净值曲线与基准对比图 ]
                         </div>
                         <div className="flex-1 border border-zinc-800/60 rounded-lg overflow-hidden flex flex-col min-h-[300px]">
                             <div className="h-10 px-4 border-b border-zinc-800/60 flex items-center bg-[#111216] shrink-0"><h3 className="text-sm font-bold text-zinc-300">交易明细快照</h3></div>
@@ -1692,9 +1727,10 @@
 
             const [strategies, setStrategies] = useStickyState(MOCK_DB.strategies, 'lq_strategies');
             const [backtests, setBacktests] = useStickyState(MOCK_DB.backtests, 'lq_backtests');
-            const [positions, setPositions] = useStickyState(MOCK_DB.monitorPositions, 'lq_positions');
-            const [historyTrades, setHistoryTrades] = useStickyState(MOCK_DB.historyTrades, 'lq_history');
+            const [positions, setPositions] = useSeedAwareState([], 'lq_positions_v2', 'lq_positions', MOCK_DB.monitorPositions);
+            const [historyTrades, setHistoryTrades] = useSeedAwareState([], 'lq_history_v2', 'lq_history', MOCK_DB.historyTrades);
             const [appliedStrategyId, setAppliedStrategyId] = useStickyState(MOCK_DB.strategies[0]?.id, 'lq_appliedId');
+            const [appliedStrategySnapshot, setAppliedStrategySnapshot] = useStickyState(null, 'lq_appliedStrategySnapshot');
             const [executedSignalIds, setExecutedSignalIds] = useStickyState([], 'lq_executedSignals');
 
             const [toast, setToast] = useState('');
@@ -1705,7 +1741,16 @@
             const [staticScan, setStaticScan] = useState(null);
 
             const normalizedStrategies = strategies.map((s, i) => normalizeStrategy(s, i, serverDefaultParams));
-            const appliedStrategy = normalizedStrategies.find(s => s.id === appliedStrategyId) || null;
+            const appliedStrategySource = normalizedStrategies.find(s => s.id === appliedStrategyId) || null;
+            const appliedStrategy = appliedStrategySnapshot?.id === appliedStrategyId
+                ? normalizeStrategy(appliedStrategySnapshot, normalizedStrategies.findIndex(s => s.id === appliedStrategyId), serverDefaultParams)
+                : appliedStrategySource;
+
+            useEffect(() => {
+                if (appliedStrategyId && !appliedStrategySnapshot && appliedStrategySource) {
+                    setAppliedStrategySnapshot(appliedStrategySource);
+                }
+            }, [appliedStrategyId, appliedStrategySnapshot, appliedStrategySource?.id]);
 
             useEffect(() => {
                 let cancelled = false;
@@ -1787,7 +1832,7 @@
                     <div className="flex-1 flex overflow-hidden relative w-full bg-[#0D0E11]">
                         {activeTab === '监控' && <ViewMonitor appliedStrategy={appliedStrategy} positions={positions} setPositions={setPositions} historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} executedSignalIds={executedSignalIds} setExecutedSignalIds={setExecutedSignalIds} apiStatus={apiStatus} staticScan={staticScan} serverDefaultParams={serverDefaultParams} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
                         {activeTab === '历史' && <ViewHistory historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
-                        {activeTab === '策略' && <ViewStrategy strategies={normalizedStrategies} setStrategies={setStrategies} appliedId={appliedStrategyId} setAppliedId={setAppliedStrategyId} onShowToast={showToast} />}
+                        {activeTab === '策略' && <ViewStrategy strategies={normalizedStrategies} setStrategies={setStrategies} appliedId={appliedStrategyId} setAppliedId={setAppliedStrategyId} setAppliedStrategySnapshot={setAppliedStrategySnapshot} onShowToast={showToast} />}
                         {activeTab === '回测' && <ViewBacktest strategies={normalizedStrategies} setStrategies={setStrategies} backtests={backtests} setBacktests={setBacktests} apiStatus={apiStatus} onShowToast={showToast} />}
                     </div>
                 </div>

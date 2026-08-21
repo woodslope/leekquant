@@ -103,8 +103,9 @@ def scan(config: dict, market: dict, executed_ids: list[str] | None = None, posi
     }
 
 
-def backtest(config: dict, markets: list[dict], name: str, range_text: str) -> dict:
+def backtest(config: dict, markets: list[dict], name: str, range_text: str, capital: float = 100000) -> dict:
     config = normalize_config(config)
+    capital = max(float(capital or 100000), 0)
     # 按日期索引 market 快照，用于查找离场日的真实价格
     market_by_date = {m.get("date", ""): m for m in markets}
     trading_dates = sorted(market_by_date.keys())
@@ -166,6 +167,7 @@ def backtest(config: dict, markets: list[dict], name: str, range_text: str) -> d
         "id": bt_id,
         "name": name,
         "range": range_text,
+        "capital": capital,
         "return": _fmt(total),
         "winRate": win_rate,
         "synced": False,
@@ -181,6 +183,7 @@ def backtest(config: dict, markets: list[dict], name: str, range_text: str) -> d
                 "winRate": win_rate,
                 "trades": len(trades),
                 "avgHold": "7天",
+                "capital": capital,
             },
             "trades": trades,
         },

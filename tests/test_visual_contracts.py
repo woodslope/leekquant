@@ -38,7 +38,7 @@ class VisualContractsTest(unittest.TestCase):
     def test_main_page_headers_omit_eyebrow_labels(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
-        for title in ["策略监控台", "历史交易复盘", "策略规则配置", "回测任务大厅"]:
+        for title in ["收盘复盘台", "历史交易复盘", "策略规则配置", "回测任务大厅"]:
             title_index = html.index(title)
             header_start = html.rfind("<PageHeader", 0, title_index)
             header_end = html.index("stats={", title_index)

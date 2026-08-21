@@ -21,6 +21,15 @@ class StrategyPageTest(unittest.TestCase):
 
         self.assertIn("setActiveCardId(activeStrategy.id);", handle_apply)
         self.assertIn("setAppliedId(activeStrategy.id);", handle_apply)
+        self.assertIn("setAppliedStrategySnapshot(activeStrategy);", handle_apply)
+
+    def test_strategy_editor_uses_auto_save_and_applies_a_snapshot(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("正在自动保存…", html)
+        self.assertIn("已自动保存", html)
+        self.assertIn("const [appliedStrategySnapshot, setAppliedStrategySnapshot]", html)
+        self.assertNotIn("onShowToast('配置已保存到策略库')", html)
 
 
 if __name__ == "__main__":

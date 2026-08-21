@@ -16,6 +16,20 @@ class MonitorPageTest(unittest.TestCase):
         self.assertIn("执行扫描", html)
         self.assertIn("bg-blue-600 hover:bg-blue-500 text-white px-3 md:px-4 py-1.5 rounded-md flex items-center text-sm font-medium transition-colors", html)
 
+    def test_new_users_start_without_seeded_demo_trades(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("useSeedAwareState([], 'lq_positions_v2', 'lq_positions', MOCK_DB.monitorPositions)", html)
+        self.assertIn("useSeedAwareState([], 'lq_history_v2', 'lq_history', MOCK_DB.historyTrades)", html)
+        self.assertIn("暂无模拟持仓；完成扫描后可将观察标的加入这里", html)
+
+    def test_demo_data_cannot_modify_simulated_positions(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("currentProvider !== 'mock'", html)
+        self.assertIn("当前为演示或离线数据，只能查看，不能修改模拟持仓", html)
+        self.assertIn("加入模拟持仓", html)
+
     def test_monitor_scan_feedback_names_strategy_and_result(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
@@ -34,7 +48,7 @@ class MonitorPageTest(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
         self.assertIn('md:hidden space-y-3', html)
-        self.assertIn('aria-label={`${row.name}：${canOperateHolding ? holdingActionLabel : \'只读\'}`}', html)
+        self.assertIn('aria-label={`${row.name}：${canOperateSimulation ? holdingActionLabel : \'只读\'}`}', html)
         self.assertIn('hidden md:table', html)
 
     def test_backtest_start_exposes_busy_feedback_and_blocks_duplicates(self):
@@ -56,7 +70,7 @@ class MonitorPageTest(unittest.TestCase):
     def test_monitor_header_omits_context_eyebrow(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
-        title_index = html.index("策略监控台")
+        title_index = html.index("收盘复盘台")
         header_start = html.rfind("<PageHeader", 0, title_index)
         monitor_header = html[header_start : html.index("stats={", title_index)]
         self.assertNotIn("eyebrow=", monitor_header)
@@ -142,7 +156,7 @@ class MonitorPageTest(unittest.TestCase):
 
         self.assertIn("const pendingScanData =", html)
         self.assertIn("const awaitingLocalScan = apiStatus.status === 'online' && isLiveDate && !remoteData;", html)
-        self.assertIn("点击执行扫描后会按运行策略筛选股票", html)
+        self.assertIn("第 1 步确认运行策略，第 2 步执行扫描，第 3 步查看并选择观察标的", html)
         self.assertIn("尚未执行本地扫描", html)
         self.assertNotIn("handleRunScan({ silent: true", html)
 
@@ -192,16 +206,17 @@ class MonitorPageTest(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
         self.assertIn("const canOperateHolding = !hasStaticScan;", html)
+        self.assertIn("const canOperateSimulation = canOperateHolding && apiStatus.status === 'online' && currentProvider !== 'mock';", html)
         self.assertIn("const holdingActionDate = latestScanDate;", html)
         self.assertIn("if (!canOperateHolding) return onShowToast('收盘快照为只读，不能离场');", html)
         self.assertIn("exit: holdingActionDate,", html)
 
         holding_card = html[html.index("当前持仓风控") : html.index("{positions.length === 0")]
-        self.assertIn("disabled={!canOperateHolding}", holding_card)
-        self.assertIn("const holdingActionLabel = row.status === 'warning' ? '离场' : row.status === 'danger' ? '斩仓' : '';", holding_card)
-        self.assertIn("canOperateHolding ? holdingActionLabel : '只读'", holding_card)
-        self.assertIn("canOperateHolding ? '离场' : '只读'", html)
-        self.assertIn("canOperateHolding ? '斩仓' : '只读'", html)
+        self.assertIn("disabled={!canOperateSimulation}", holding_card)
+        self.assertIn("const holdingActionLabel = row.status === 'warning' ? '记录离场' : row.status === 'danger' ? '记录止损' : '';", holding_card)
+        self.assertIn("canOperateSimulation ? holdingActionLabel : '只读'", holding_card)
+        self.assertIn("canOperateSimulation ? '记录离场' : '只读'", html)
+        self.assertIn("canOperateSimulation ? '记录止损' : '只读'", html)
         self.assertNotIn("disabled={!isLiveDate}", holding_card)
         self.assertNotIn("isLiveDate ? '离场'", holding_card)
         self.assertNotIn("isLiveDate ? '斩仓'", holding_card)

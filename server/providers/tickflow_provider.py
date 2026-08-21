@@ -90,11 +90,13 @@ class TickFlowProvider:
             raise RuntimeError(f"TickFlow 历史日线批量获取失败: {exc}") from exc
 
         # 3) 按 symbol 分组排序，注入 _prev_close，再按 date 聚合
+        symbol_rows: dict[str, list[dict]] = {}
         all_rows_by_date: dict[str, list[dict]] = {}
         for sym, df in dfs.items():
             if df is None or df.empty:
                 continue
             rows = sorted(df.to_dict("records"), key=lambda r: str(r.get("trade_date", "")))
+            symbol_rows[sym] = rows
             for i, row in enumerate(rows):
                 td = str(row.get("trade_date", ""))
                 if td < start_dt or td > end_dt:
@@ -104,6 +106,32 @@ class TickFlowProvider:
                 if td not in all_rows_by_date:
                     all_rows_by_date[td] = []
                 all_rows_by_date[td].append(row)
+
+        # 3.5) 预计算每个 symbol 的真实技术指标，注入到对应日期的 row
+        from server.engine.indicators import compute_indicators  # noqa: E402
+
+        for sym, rows in symbol_rows.items():
+            closes = [self._num(r.get("close")) for r in rows]
+            highs = [self._num(r.get("high")) for r in rows]
+            lows = [self._num(r.get("low")) for r in rows]
+            volumes = [self._num(r.get("volume")) for r in rows]
+            amounts = [self._num(r.get("amount")) for r in rows]
+            opens = [self._num(r.get("open")) for r in rows]
+
+            # 对每个日期切出 <= 该日期的子序列计算指标（无未来数据）
+            for i, row in enumerate(rows):
+                td = str(row.get("trade_date", ""))
+                if td < start_dt or td > end_dt:
+                    continue
+                sub_closes = closes[: i + 1]
+                sub_highs = highs[: i + 1]
+                sub_lows = lows[: i + 1]
+                sub_volumes = volumes[: i + 1]
+                sub_amounts = amounts[: i + 1]
+                sub_opens = opens[: i + 1]
+
+                ind = compute_indicators(sub_closes, sub_highs, sub_lows, sub_volumes, sub_amounts, sub_opens)
+                row["_ind"] = ind  # 将真实指标注入 row，后续 _build_factor 会读取
 
         # 4) 逐日构建 market 快照
         markets: list[dict] = []
@@ -322,7 +350,7 @@ class TickFlowProvider:
             elif open_price:
                 pct = round((close / open_price - 1) * 100, 2)
 
-        return self._build_factor(code, name, close, open_price, high, low, pct, amount, turnover=0.0)
+        return self._build_factor(code, name, close, open_price, high, low, pct, amount, turnover=0.0, indicators=row.get("_ind"))
 
     def _build_factor(
         self,
@@ -335,39 +363,89 @@ class TickFlowProvider:
         pct: float,
         amount: float,
         turnover: float,
+        indicators: dict | None = None,
     ) -> dict:
-        """将原始字段统一映射为标准 stock factor dict，与 AKShare / BaoStock / Tushare 的 _spot_to_factor / _daily_to_factor 保持一致。"""
-        vol_ratio = max(0.8, min(4.5, amount / 1_000_000_000)) if amount else 1.2
-        # 下影线比率：(min(open, close) - low) / (high - low + 0.01)
-        body_low = min(close, open_price) if close and open_price else close
-        hl_range = (high - low) if high and low else 0.01
-        lower_shadow = max(0.0, (body_low - low) / max(hl_range, 0.01)) if body_low and low else 1.0
+        """将原始字段统一映射为标准 stock factor dict。
 
+        indicators 为 compute_indicators() 返回的真实指标字典。
+        有真实值时优先使用，否则退回 pct 线性近似。
+        """
+        ind = indicators or {}
+
+        # ---- 真实指标（优先） / 近似值（兜底） ----
+        # RSI
+        rsi_real = ind.get("rsi")
+        if rsi_real is not None:
+            rsi = round(rsi_real, 1)
+        else:
+            rsi = round(max(20, min(80, 45 + pct * 3)), 1)
+
+        # MACD 金叉
+        macd_cross = ind.get("macdCross")
+        if macd_cross is not None:
+            _macd_cross = bool(macd_cross)
+        else:
+            _macd_cross = pct > 1
+
+        # 站上均线
+        above_ma = ind.get("aboveMa")
+        if above_ma is not None:
+            _above_ma = bool(above_ma)
+        else:
+            _above_ma = pct > -1
+
+        # 量比
+        vol_ratio_real = ind.get("volRatio")
+        if vol_ratio_real is not None:
+            _vol_ratio = round(vol_ratio_real, 2)
+        else:
+            _vol_ratio = round(max(0.8, min(4.5, amount / 1_000_000_000)), 2) if amount else 1.2
+
+        # N 日新高
+        high_days_real = ind.get("highDays")
+        if high_days_real is not None:
+            _high_days = int(max(1, min(60, high_days_real)))
+        else:
+            _high_days = int(max(5, min(30, 10 + pct * 2)))
+
+        # 下影线比率
+        lower_shadow_real = ind.get("lowerShadowRatio")
+        if lower_shadow_real is not None:
+            _lower_shadow = round(lower_shadow_real, 2)
+        else:
+            body_low = min(close, open_price) if close and open_price else close
+            hl_range = (high - low) if high and low else 0.01
+            _lower_shadow = max(0.0, (body_low - low) / max(hl_range, 0.01)) if body_low and low else 1.0
+            _lower_shadow = round(max(0.5, min(3.0, _lower_shadow + abs(pct) / 5)), 1)
+
+        # ---- 仍为近似值的字段（需要资金流 / 北向等数据） ----
         return {
             "id": code,
             "name": name,
             "close": close,
             "closeAbovePrev": pct >= 0,
             "closeAboveOpen": close >= open_price if open_price else pct >= 0,
-            "highDays": int(max(5, min(30, 10 + pct * 2))),
+            "highDays": _high_days,
             "platformDays": int(max(8, min(30, 15 + turnover))) if turnover else 15,
             "platformAmp": round(max(4, min(18, abs(pct) + 7)), 1),
             "gapUp": pct > 3,
             "pullbackDays": int(max(1, min(8, 3 + turnover / 2))) if turnover else 3,
-            "lowerShadowRatio": round(max(0.5, min(3.0, lower_shadow + abs(pct) / 5)), 1),
+            "lowerShadowRatio": _lower_shadow,
             "surgePct": pct,
-            "aboveMa": pct > -1,
+            "aboveMa": _above_ma,
             "fundSafeDays": int(max(1, min(8, 4 + pct / 2))),
-            "macdCross": pct > 1,
+            "macdCross": _macd_cross,
             "superInflowDays": 1 if pct > 0 else 0,
-            "volRatio": round(vol_ratio, 2),
-            "rsi": round(max(20, min(80, 45 + pct * 3)), 1),
+            "volRatio": _vol_ratio,
+            "rsi": rsi,
             "mainInflowPct": round(max(0, min(25, 8 + pct)), 1),
             "northDays": int(max(1, min(8, 4 + pct / 2))),
             "northPct": round(max(0.01, min(0.35, 0.08 + pct / 100)), 3),
             "backtestReturn": round(max(-12, min(18, pct * 1.8)), 1),
             "maxLoss": round(min(-2, -abs(pct) - 2), 1),
             "exitReason": "策略止盈" if pct >= 0 else "硬止损",
+            # 标记指标可信度
+            "indicatorConfidence": "real" if indicators else "approximate",
         }
 
     # ---- Private: code format helpers ----

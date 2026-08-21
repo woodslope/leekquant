@@ -130,7 +130,13 @@ class Handler(SimpleHTTPRequestHandler):
             warnings.append(str(exc))
             provider = fallback
             markets = fallback.historical_markets(start=start, end=end)
-        result = backtest(payload.get("config") or {}, markets, payload.get("name") or "未命名回测", payload.get("range") or f"{start or ''} ~ {end or ''}")
+        result = backtest(
+            payload.get("config") or {},
+            markets,
+            payload.get("name") or "未命名回测",
+            payload.get("range") or f"{start or ''} ~ {end or ''}",
+            payload.get("capital") or 100000,
+        )
         return self.json({"ok": True, "provider": provider.name, "warnings": warnings, "backtest": result})
 
     def handle_stock_daily(self, parsed):
