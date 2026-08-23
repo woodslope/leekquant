@@ -205,8 +205,8 @@ class MonitorPageTest(unittest.TestCase):
     def test_holding_actions_do_not_follow_scan_date_readonly_state(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn("const canOperateHolding = !hasStaticScan;", html)
-        self.assertIn("const canOperateSimulation = canOperateHolding && apiStatus.status === 'online' && currentProvider !== 'mock';", html)
+        self.assertIn("const canOperateHolding = capabilities.canChangePortfolio;", html)
+        self.assertIn("const canOperateSimulation = capabilities.canChangePortfolio && currentProvider !== 'mock';", html)
         self.assertIn("const holdingActionDate = latestScanDate;", html)
         self.assertIn("if (!canOperateHolding) return onShowToast('收盘快照为只读，不能离场');", html)
         self.assertIn("exit: holdingActionDate,", html)
@@ -234,7 +234,7 @@ class MonitorPageTest(unittest.TestCase):
     def test_monitor_scan_button_clicks_even_when_scan_is_unavailable(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn("const canRunScan = Boolean(appliedStrategy) && apiStatus.status === 'online';", html)
+        self.assertIn("const canRunScan = Boolean(appliedStrategy) && capabilities.canScan;", html)
         self.assertIn("disabled={scanButtonDisabled}", html)
         self.assertIn("const scanButtonDisabled = hasStaticScan || isScanning;", html)
         self.assertIn("aria-disabled={!canRunScan || scanButtonDisabled}", html)

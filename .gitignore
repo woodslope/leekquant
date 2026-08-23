@@ -9,3 +9,6 @@ __pycache__/
 *.log
 .env
 screenshots/
+node_modules/
+playwright-report/
+test-results/

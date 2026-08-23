@@ -46,6 +46,28 @@ class ProjectDocsTest(unittest.TestCase):
         self.assertIn("TUSHARE_TOKEN=", env_example)
         self.assertIn(".env", gitignore)
 
+    def test_readme_matches_scheduled_close_scan_contract(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/close-scan.yml").read_text(encoding="utf-8")
+
+        self.assertIn("GitHub 收盘快照版", readme)
+        self.assertIn("工作日 16:37", readme)
+        self.assertIn("只读", readme)
+        self.assertIn('cron: "37 8 * * 1-5"', workflow)
+        self.assertIn("permissions:\n  contents: write", workflow)
+        self.assertNotIn("GitHub Actions 不再定时生成行情", readme)
+
+    def test_frontend_runtime_is_local_and_version_locked(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        package = (ROOT / "package.json").read_text(encoding="utf-8")
+
+        self.assertIn('href="assets/app.css"', html)
+        self.assertIn('src="assets/vendor/react.production.min.js"', html)
+        self.assertNotIn("cdn.tailwindcss.com", html)
+        self.assertNotIn("cdn.jsdelivr.net", html)
+        self.assertIn('"react": "18.3.1"', package)
+        self.assertIn('"tailwindcss": "3.4.17"', package)
+
 
 if __name__ == "__main__":
     unittest.main()

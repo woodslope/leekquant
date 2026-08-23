@@ -23,7 +23,8 @@ class VisualContractsTest(unittest.TestCase):
 
     def test_strategy_editor_header_matches_wide_body_padding(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        strategy_editor = html[html.index('bodyClass="p-4 md:p-8"') - 220 : html.index("未选择策略")]
+        editor_start = html.index('className="flex-1 min-w-0"')
+        strategy_editor = html[editor_start : html.index("</Card>", editor_start)]
 
         self.assertIn('headerClass="px-4 md:px-8 py-3"', strategy_editor)
         self.assertIn('bodyClass="p-4 md:p-8"', strategy_editor)
@@ -50,7 +51,10 @@ class VisualContractsTest(unittest.TestCase):
         history_view = html[html.index("const ViewHistory") : html.index("// ==========================================\n        // 子视图：4. 回测页")]
 
         self.assertIn("const handleClearHistory = () =>", history_view)
-        self.assertIn("确定清空全部历史交易记录吗？此操作只会清除本浏览器里的模拟交易历史，无法撤回。", history_view)
+        self.assertIn("title: '清空历史交易记录'", history_view)
+        self.assertIn("body: '将清除本浏览器内的全部模拟交易历史，此操作无法撤回。'", history_view)
+        self.assertIn("confirmLabel: '确认清空'", history_view)
+        self.assertIn("onRequestConfirm({", history_view)
         self.assertIn("setHistoryTrades([]);", history_view)
         self.assertIn("历史交易记录已清空", history_view)
         self.assertIn("清空记录", history_view)

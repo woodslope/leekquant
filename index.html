@@ -5,28 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="author" content="LINPO LAB">
     <title>韭菜策略 - LINPO LAB</title>
-    <!-- Tailwind CSS (开发版 CDN) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: { extend: {} }
-        }
-    </script>
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel (用于在浏览器端编译 JSX) -->
-    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
-    <style>
-        /* 隐藏滚动条但保留滚动功能，提升高级感 */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-        /* 移除数字输入框的箭头 */
-        input[type="number"]::-webkit-inner-spin-button,
-        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    </style>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="assets/app.css">
+    <!-- 锁定版本的本地运行时，页面不依赖 CDN -->
+    <script src="assets/vendor/react.production.min.js"></script>
+    <script src="assets/vendor/react-dom.production.min.js"></script>
+    <script src="assets/vendor/babel.min.js"></script>
 </head>
 <body class="bg-[#0D0E11] text-zinc-300 antialiased overflow-hidden">
 
@@ -166,6 +150,110 @@
             </div>
         );
 
+        const BUTTON_STYLES = {
+            primary: "bg-blue-600 text-white border-blue-500/60 hover:bg-blue-500",
+            success: "bg-green-700 text-white border-green-600/60 hover:bg-green-600",
+            secondary: "bg-zinc-800 text-zinc-200 border-zinc-700 hover:bg-zinc-700",
+            danger: "bg-red-950/40 text-red-400 border-red-900/70 hover:bg-red-950/70",
+            ghost: "bg-transparent text-zinc-400 border-transparent hover:bg-zinc-800/60 hover:text-zinc-200"
+        };
+
+        const Button = ({ variant = "secondary", loading = false, disabled = false, disabledReason = "", className = "", children, ...props }) => (
+            <button
+                {...props}
+                disabled={disabled || loading}
+                aria-disabled={disabled || loading}
+                aria-busy={loading || undefined}
+                title={disabled ? disabledReason || props.title : props.title}
+                className={`ui-control inline-flex items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors ${BUTTON_STYLES[variant]} ${(disabled || loading) ? 'cursor-not-allowed opacity-50' : ''} ${className}`}
+            >
+                {loading && <Icons.LoaderCircle size={14} className="animate-spin" />}
+                {children}
+            </button>
+        );
+
+        const IconButton = ({ label, className = "", children, ...props }) => (
+            <button
+                {...props}
+                aria-label={label}
+                title={props.title || label}
+                className={`ui-touch-target h-8 w-8 md:min-h-8 inline-flex items-center justify-center rounded-md border border-zinc-800 bg-[#111216] text-zinc-500 transition-colors hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-200 ${className}`}
+            >
+                {children}
+            </button>
+        );
+
+        const ActionableEmptyState = ({ title, description, action }) => (
+            <div className="flex min-h-40 flex-col items-center justify-center px-5 py-10 text-center">
+                <div className="text-sm font-bold text-zinc-300">{title}</div>
+                {description && <p className="mt-2 max-w-md text-xs leading-5 text-zinc-500">{description}</p>}
+                {action && <div className="mt-4">{action}</div>}
+            </div>
+        );
+
+        const ReadOnlyModeNotice = ({ mode = 'static', children }) => (
+            <div className="flex items-start gap-3 rounded-lg border border-blue-900/40 bg-blue-950/20 px-4 py-2.5 text-xs leading-5 text-zinc-400 md:text-sm">
+                <Icons.ArrowRight size={14} className="mt-0.5 shrink-0 text-blue-400" />
+                <span>{children || (mode === 'offline' ? '当前未读取到本地服务或收盘快照。请运行 bash start.sh 后重新加载。' : '当前是收盘快照只读模式。需要编辑或运行任务时，请下载项目并运行 bash start.sh。')}</span>
+            </div>
+        );
+
+        const Dialog = ({ open, title, description, onClose, children, footer, labelledBy = "lq-dialog-title" }) => {
+            const panelRef = useRef(null);
+            const previousFocusRef = useRef(null);
+            useEffect(() => {
+                if (!open) return;
+                previousFocusRef.current = document.activeElement;
+                const panel = panelRef.current;
+                const focusable = panel?.querySelector('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+                focusable?.focus();
+                const handleKeyDown = (event) => {
+                    if (event.key === 'Escape') onClose?.();
+                    if (event.key !== 'Tab' || !panel) return;
+                    const items = [...panel.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+                    if (!items.length) return;
+                    const first = items[0];
+                    const last = items[items.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                };
+                document.addEventListener('keydown', handleKeyDown);
+                return () => {
+                    document.removeEventListener('keydown', handleKeyDown);
+                    previousFocusRef.current?.focus?.();
+                };
+            }, [open, onClose]);
+            if (!open) return null;
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose?.()}>
+                    <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-describedby={description ? `${labelledBy}-description` : undefined} className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-800/70 bg-[#16181D] shadow-[0_18px_60px_rgba(0,0,0,0.45)]">
+                        <div className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-zinc-800/60 bg-[#111216] px-4 md:px-6">
+                            <div className="min-w-0">
+                                <h2 id={labelledBy} className="text-base font-bold text-zinc-100 md:text-lg">{title}</h2>
+                                {description && <p id={`${labelledBy}-description`} className="mt-1 text-xs text-zinc-500">{description}</p>}
+                            </div>
+                            <IconButton label="关闭对话框" onClick={onClose}><Icons.XCircle size={18}/></IconButton>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+                        {footer && <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-800/60 bg-[#111216] px-4 py-3">{footer}</div>}
+                    </div>
+                </div>
+            );
+        };
+
+        const ConfirmDialog = ({ state, onCancel, onConfirm }) => (
+            <Dialog
+                open={Boolean(state)}
+                title={state?.title || '确认操作'}
+                description={state?.description}
+                onClose={onCancel}
+                labelledBy="confirm-dialog-title"
+                footer={<><Button variant="ghost" onClick={onCancel}>取消</Button><Button variant="danger" onClick={onConfirm}>{state?.confirmLabel || '确认删除'}</Button></>}
+            >
+                <div className="p-5 text-sm leading-6 text-zinc-300">{state?.body}</div>
+            </Dialog>
+        );
+
         const Badge = ({ type, children }) => {
             const styles = {
                 pass: "bg-green-950/60 text-green-400 border-green-800/50",
@@ -203,10 +291,10 @@
             </div>
         );
 
-        const StatBlock = ({ label, value, tone = "text-zinc-100" }) => (
+        const StatBlock = ({ label, value, tone = "text-zinc-100", textValue = false }) => (
             <div className="px-4 md:px-5 py-2.5 min-w-0 bg-[#111216]/70">
                 <div className="text-[10px] font-mono text-zinc-500 mb-1 truncate">{label}</div>
-                <div className={`text-base md:text-lg font-bold font-mono truncate ${tone}`}>{value}</div>
+                <div className={`text-base md:text-lg font-bold font-mono ${textValue ? 'line-clamp-2 break-words leading-5 md:leading-6' : 'truncate'} ${tone}`}>{value}</div>
             </div>
         );
 
@@ -222,7 +310,7 @@
                     <span className="sr-only">{label}</span>
                     <span className="min-w-0 flex-1">{children}</span>
                     {onDismiss && (
-                        <button onClick={onDismiss} aria-label="关闭提示" className="shrink-0 text-yellow-700/80 hover:text-yellow-300 transition-colors px-1 leading-none">
+                        <button onClick={onDismiss} aria-label="关闭提示" className="ui-touch-target shrink-0 text-yellow-700/80 hover:text-yellow-300 transition-colors px-2 leading-none">
                             ×
                         </button>
                     )}
@@ -298,6 +386,15 @@
             .trim();
         const dataSourceName = (provider) => provider === 'tushare' ? 'Tushare 历史日线' : provider === 'akshare' ? 'AKShare 历史日线' : provider === 'baostock' ? 'BaoStock 历史日线备用' : provider === 'sina' ? '新浪行情兜底' : provider === 'tickflow' ? 'TickFlow 日线数据' : provider === 'demo' ? '固定演示数据' : provider === 'mock' ? '样本数据' : provider === 'static' ? '收盘快照' : '本地引擎';
         const dataSourceTier = (provider) => ['tushare', 'tickflow', 'akshare', 'baostock'].includes(provider) ? '数据可信层级：历史日线源' : provider === 'sina' ? '数据可信层级：行情兜底源' : ['demo', 'mock', 'local'].includes(provider) ? '数据可信层级：演示数据' : '数据可信层级：收盘静态快照';
+        const runtimeModeFromStatus = (status) => status === 'online' ? 'local' : status === 'static' ? 'static' : 'offline';
+        const capabilitiesForMode = (mode, provider) => ({
+            mode,
+            canScan: mode === 'local',
+            canEditStrategy: mode === 'local',
+            canChangePortfolio: mode === 'local' && provider !== 'mock',
+            canRunBacktest: mode === 'local',
+            canMutateHistory: mode === 'local'
+        });
         const indicatorConfidenceLabel = (conf) => conf === 'real' ? '真实指标' : conf === 'approximate' ? '近似指标' : '';
         const STOCK_BOARD_OPTIONS = [
             { value: 'all', label: '全部' },
@@ -546,21 +643,14 @@
         const StockDetailModal = ({ stock, onClose }) => {
             if (!stock) return null;
             return (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-[#16181D] border border-zinc-800/60 rounded-lg w-full max-w-2xl shadow-[0_18px_60px_rgba(0,0,0,0.30)] flex flex-col overflow-hidden">
-                        <div className="h-16 px-6 border-b border-zinc-800/60 flex items-center justify-between bg-[#111216] shrink-0">
-                            <div className="flex flex-col">
-                                <div className="text-lg font-bold text-zinc-100 flex items-center gap-2">
-                                    <span className="text-blue-400">{stock.code}</span>
-                                    <span>{stock.name}</span>
-                                </div>
-                                <div className="text-[10px] text-zinc-500 font-mono mt-0.5">数据快照: {stock.entryDate || stock.entry || '实时'}</div>
-                            </div>
-                            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors bg-zinc-800/50 hover:bg-zinc-800 p-2 rounded-md">
-                                <Icons.XCircle size={20}/>
-                            </button>
-                        </div>
-                        <div className="p-6 overflow-y-auto space-y-6">
+                <Dialog
+                    open={Boolean(stock)}
+                    onClose={onClose}
+                    labelledBy="stock-detail-title"
+                    title={<span className="flex items-center gap-2"><span className="text-blue-400">{stock.code}</span><span>{stock.name}</span></span>}
+                    description={`数据快照：${stock.entryDate || stock.entry || '实时'}`}
+                >
+                        <div className="p-4 md:p-6 overflow-y-auto space-y-6">
                             <div className="flex flex-col md:flex-row gap-4">
                                 <div className="flex-1 bg-[#111216] p-4 rounded-lg border border-zinc-800/50">
                                     <div className="text-xs text-zinc-500 mb-1 font-mono">命中/绑定策略</div>
@@ -581,8 +671,7 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Dialog>
             );
         };
 
@@ -655,9 +744,14 @@
         // ==========================================
         // 配置中心模块：RuleConfigurator
         // ==========================================
-        const RuleConfigurator = ({ config, onChange }) => {
+        const RuleConfigurator = ({ config, onChange, readOnly = false }) => {
             const cfg = createRuleConfig(config || {});
-            const updateConfig = (patch) => onChange(createRuleConfig({ ...cfg, ...patch }));
+            const desktopRules = window.matchMedia('(min-width: 768px)').matches;
+            const [openSections, setOpenSections] = useState({ s0: true, s1: desktopRules, s2: desktopRules, s3: desktopRules });
+            const updateConfig = (patch) => {
+                if (readOnly) return;
+                onChange(createRuleConfig({ ...cfg, ...patch }));
+            };
             const updateParams = (patch) => updateConfig({ params: { ...cfg.params, ...patch } });
 
             const handleGlobalChange = (tpl) => {
@@ -692,8 +786,8 @@
             const TplBtnGroup = ({ options, active, onChange }) => (
                 <div className="flex flex-wrap gap-2 mb-4">
                 {options.map(opt => (
-                    <button key={opt} onClick={() => onChange(opt)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all border ${active === opt ? 'bg-zinc-700 text-zinc-100 border-zinc-500' : 'bg-[#111216] text-zinc-500 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700'}`}>
+                    <button key={opt} onClick={() => onChange(opt)} disabled={readOnly}
+                    className={`ui-control px-3 py-1.5 text-xs font-medium rounded-md transition-all border ${active === opt ? 'bg-zinc-700 text-zinc-100 border-zinc-500' : 'bg-[#111216] text-zinc-500 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700'} ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}>
                     {opt}
                     </button>
                 ))}
@@ -701,8 +795,8 @@
             );
 
             const CheckItem = ({ active, onToggle, title, paramNode }) => (
-                <label onClick={(e) => { e.preventDefault(); onToggle(); }} className={`flex items-start space-x-3 text-zinc-300 cursor-pointer p-2.5 rounded-md transition-all border ${active ? 'bg-zinc-800/40 border-zinc-700' : 'border-transparent hover:bg-zinc-800/20'}`}>
-                <input type="checkbox" checked={active} readOnly className="accent-green-600 w-4 h-4 mt-0.5 rounded-md border-zinc-700" />
+                <label onClick={(e) => { e.preventDefault(); if (!readOnly) onToggle(); }} className={`ui-touch-target flex items-start space-x-3 text-zinc-300 p-3 rounded-md transition-all border ${active ? 'bg-zinc-800/40 border-zinc-700' : 'border-transparent hover:bg-zinc-800/20'} ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}>
+                <input type="checkbox" checked={active} readOnly disabled={readOnly} className="accent-green-600 w-5 h-5 mt-0.5 rounded-md border-zinc-700" />
                 <div className="flex flex-col space-y-1 w-full">
                     <span className={`font-bold ${active ? 'text-zinc-200' : 'text-zinc-500'}`}>{title}</span>
                     {paramNode && <span className={`text-xs ${active ? 'text-zinc-400' : 'text-zinc-600'}`}>{paramNode}</span>}
@@ -711,7 +805,7 @@
             );
 
             const ParamInput = ({ id, w = "w-10", color = "text-blue-400" }) => (
-                <input type="text" value={cfg.params[id] || ''} onChange={(e)=>updateParams({ [id]: e.target.value })} onClick={(e)=>e.stopPropagation()} className={`${w} bg-zinc-900 border border-zinc-700 rounded-md px-1 text-center ${color} outline-none focus:border-blue-500 transition-colors mx-1`}/>
+                <input type="text" value={cfg.params[id] || ''} onChange={(e)=>updateParams({ [id]: e.target.value })} onClick={(e)=>e.stopPropagation()} readOnly={readOnly} aria-readonly={readOnly} className={`ui-control ${w} min-w-12 bg-zinc-900 border border-zinc-700 rounded-md px-1 text-center ${color} outline-none focus:border-blue-500 transition-colors mx-1 ${readOnly ? 'cursor-default opacity-70' : ''}`}/>
             );
 
             return (
@@ -726,22 +820,18 @@
                     <div className="text-xs text-zinc-500 font-mono"><span className="text-yellow-500/80 mr-1">ⓘ</span> 切换全局模板将自动为您组装最佳条件。手动修改任意条件将跳回"自定义"。</div>
                 </section>
 
-                <section>
-                    <h3 className="text-sm font-bold text-zinc-400 mb-4 flex items-center font-mono">
-                    <span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">0</span> 市场环境 (全局必选)
-                    </h3>
+                <details open={openSections.s0} onToggle={(event) => { const open = event.currentTarget.open; setOpenSections(value => value.s0 === open ? value : ({...value, s0: open})); }} className="group rounded-lg border border-zinc-800/60 bg-[#111216]">
+                    <summary className="ui-touch-target flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-zinc-300 font-mono"><span className="flex items-center"><span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">0</span> 市场环境（全局必选）</span><Icons.ChevronDown size={16} className="transition-transform group-open:rotate-180"/></summary>
                     <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-5 grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-sm">
                     <CheckItem active={true} onToggle={()=>{}} title="大盘在N日线上方" paramNode={<>参数: <ParamInput id="s0_ma" />日</>} />
                     <CheckItem active={true} onToggle={()=>{}} title="跌停家数 ≤ N家" paramNode={<>参数: ≤ <ParamInput id="s0_limit" />家</>} />
                     <CheckItem active={true} onToggle={()=>{}} title="未连续N日暴跌" paramNode={<>参数: 未连续 <ParamInput id="s0_crash" />日跌超1%</>} />
                     </div>
-                </section>
+                </details>
 
-                <section>
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
-                    <h3 className="text-sm font-bold text-zinc-400 flex items-center font-mono mb-3 md:mb-0">
-                        <span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">1</span> 发现 (选股)
-                    </h3>
+                <details open={openSections.s1} onToggle={(event) => { const open = event.currentTarget.open; setOpenSections(value => value.s1 === open ? value : ({...value, s1: open})); }} className="group rounded-lg border border-zinc-800/60 bg-[#111216]">
+                    <summary className="ui-touch-target flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-zinc-300 font-mono"><span className="flex items-center"><span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">1</span> 发现（选股）</span><Icons.ChevronDown size={16} className="transition-transform group-open:rotate-180"/></summary>
+                    <div className="px-4 pt-3">
                     <TplBtnGroup options={['恐慌中找强势', '趋势突破', '均值回归', '事件驱动', '自定义']} active={cfg.s1Tpl} onChange={(t) => applyStepTpl('s1', t)} />
                     </div>
                     <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-5 grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-sm">
@@ -758,13 +848,11 @@
                     <CheckItem active={cfg.s1Keys.includes('s1_shadow')} onToggle={()=>handleKeyToggle('s1','s1_shadow')} title="长下影反包" paramNode={<>参数: 下影线 ≥ 实体 <ParamInput id="s1_shadow" /> 倍</>} />
                     <CheckItem active={cfg.s1Keys.includes('s1_surge')} onToggle={()=>handleKeyToggle('s1','s1_surge')} title="事件放量异动" paramNode={<>参数: 涨幅 ≥ <ParamInput id="s1_surge" />%</>} />
                     </div>
-                </section>
+                </details>
 
-                <section>
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
-                    <h3 className="text-sm font-bold text-zinc-400 flex items-center font-mono mb-3 md:mb-0">
-                        <span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">2</span> 进场筛选
-                    </h3>
+                <details open={openSections.s2} onToggle={(event) => { const open = event.currentTarget.open; setOpenSections(value => value.s2 === open ? value : ({...value, s2: open})); }} className="group rounded-lg border border-zinc-800/60 bg-[#111216]">
+                    <summary className="ui-touch-target flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-zinc-300 font-mono"><span className="flex items-center"><span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">2</span> 进场筛选</span><Icons.ChevronDown size={16} className="transition-transform group-open:rotate-180"/></summary>
+                    <div className="px-4 pt-3">
                     <TplBtnGroup options={['稳健型', '量价型', '反转型', '跟随型', '自定义']} active={cfg.s2Tpl} onChange={(t) => applyStepTpl('s2', t)} />
                     </div>
                     <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-5 grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-sm">
@@ -777,13 +865,11 @@
                     <CheckItem active={cfg.s2Keys.includes('s2_main')} onToggle={()=>handleKeyToggle('s2','s2_main')} title="主力净流占比" paramNode={<>参数: 占比 {'>'} <ParamInput id="s2_main"/>%</>} />
                     <CheckItem active={cfg.s2Keys.includes('s2_north')} onToggle={()=>handleKeyToggle('s2','s2_north')} title="北向资金增持" paramNode={<>近<ParamInput id="s2_north_days"/>日增持 {'>'} <ParamInput id="s2_north_pct"/>%</>} />
                     </div>
-                </section>
+                </details>
 
-                <section>
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
-                    <h3 className="text-sm font-bold text-zinc-400 flex items-center font-mono mb-3 md:mb-0">
-                        <span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">3</span> 离场与风控
-                    </h3>
+                <details open={openSections.s3} onToggle={(event) => { const open = event.currentTarget.open; setOpenSections(value => value.s3 === open ? value : ({...value, s3: open})); }} className="group rounded-lg border border-zinc-800/60 bg-[#111216]">
+                    <summary className="ui-touch-target flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-zinc-300 font-mono"><span className="flex items-center"><span className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center mr-2">3</span> 离场与风控</span><Icons.ChevronDown size={16} className="transition-transform group-open:rotate-180"/></summary>
+                    <div className="px-4 pt-3">
                     <TplBtnGroup options={['保守套件', '激进套件', '量价套件', '系统性防御', '自定义']} active={cfg.s3Tpl} onChange={(t) => applyStepTpl('s3', t)} />
                     </div>
                     <div className="bg-[#111216] border border-zinc-800/60 rounded-lg p-5 grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-sm">
@@ -795,7 +881,7 @@
                     <CheckItem active={cfg.s3Keys.includes('s3_stag')} onToggle={()=>handleKeyToggle('s3','s3_stag')} title="单日巨量滞涨" paramNode={<>量比{'>'}<ParamInput id="s3_stag_vol"/>, 涨幅{'<'}<ParamInput id="s3_stag_gain"/>%</>} />
                     <CheckItem active={cfg.s3Keys.includes('s3_market')} onToggle={()=>handleKeyToggle('s3','s3_market')} title="系统性防御清仓" paramNode={<>参数: 跌停家数 {'>'} <ParamInput id="s3_market_limit"/> 家</>} />
                     </div>
-                </section>
+                </details>
 
                 </div>
             );
@@ -804,7 +890,7 @@
         // ==========================================
         // 子视图：1. 监控页 (Monitor)
         // ==========================================
-        const ViewMonitor = ({ appliedStrategy, positions, setPositions, historyTrades, setHistoryTrades, executedSignalIds, setExecutedSignalIds, apiStatus, staticScan, serverDefaultParams, onShowToast, onOpenStockDetail }) => {
+        const ViewMonitor = ({ appliedStrategy, positions, setPositions, historyTrades, setHistoryTrades, executedSignalIds, setExecutedSignalIds, apiStatus, staticScan, serverDefaultParams, capabilities, onShowToast, onOpenStockDetail }) => {
             const localDemoDate = "2026-05-20";
             const [currentDate, setCurrentDate] = useState(localDemoDate);
             const [expandedSteps, setExpandedSteps] = useState({ s0: true, s1: true, s2: true });
@@ -818,8 +904,8 @@
             const latestScanDate = remoteData?.tradeDate || remoteData?.providerDate || localDemoDate;
             const isStaticDate = hasStaticScan && currentDate === staticDate;
             const isLiveDate = !hasStaticScan && currentDate === latestScanDate;
-            const canRunScan = Boolean(appliedStrategy) && apiStatus.status === 'online';
-            const canOperateHolding = !hasStaticScan;
+            const canRunScan = Boolean(appliedStrategy) && capabilities.canScan;
+            const canOperateHolding = capabilities.canChangePortfolio;
             const holdingActionDate = latestScanDate;
             const localData = buildMonitorData(currentDate, appliedStrategy, positions, executedSignalIds);
             const pendingScanData = {
@@ -845,7 +931,7 @@
             } : null;
             const awaitingLocalScan = apiStatus.status === 'online' && isLiveDate && !remoteData;
             const activeData = (() => {
-                const base = staticData || (isLiveDate && remoteData ? { ...remoteData, strategyName: appliedStrategy?.name || '无运行策略' } : awaitingLocalScan ? pendingScanData : localData);
+                const base = staticData || (apiStatus.status === 'offline' ? pendingScanData : isLiveDate && remoteData ? { ...remoteData, strategyName: appliedStrategy?.name || '无运行策略' } : awaitingLocalScan ? pendingScanData : localData);
                 // 数据降级到 mock 且无真实信号时，改写漏斗文案以避免误解
                 if (base?.provider === 'mock' && (!base.signals || base.signals.length === 0) && base.funnel) {
                     const degradedFunnel = { ...base.funnel };
@@ -860,7 +946,7 @@
             const filteredSignals = signalBoardFilter === 'all' ? signals : signals.filter(row => stockBoardOf(row.id) === signalBoardFilter);
             const selectedBoardOption = STOCK_BOARD_OPTIONS.find(option => option.value === signalBoardFilter) || STOCK_BOARD_OPTIONS[0];
             const currentProvider = staticData?.provider || remoteData?.provider || apiStatus.provider || activeData?.provider || 'local';
-            const canOperateSimulation = canOperateHolding && apiStatus.status === 'online' && currentProvider !== 'mock';
+            const canOperateSimulation = capabilities.canChangePortfolio && currentProvider !== 'mock';
             const dataSourceLabel = dataSourceName(currentProvider);
             const dataNoticeType = activeData?.provider === 'mock' || apiStatus.provider === 'local' ? 'warning' : 'neutral';
             const dataTierNotice = `${dataSourceTier(currentProvider)}。`;
@@ -885,8 +971,8 @@
                 ? `已连接历史日线数据。第 1 步确认运行策略，第 2 步执行扫描，第 3 步查看并选择观察标的。${dataTierNotice}`
                 : remoteData
                 ? `当前为 ${latestScanDate} 本地扫描结果，数据源：${dataSourceLabel}，请结合数据源状态理解扫描结果。${dataTierNotice}${providerOrderNotice}${providerFallbackNotice}${tushareNotice}`
-                : apiStatus.provider === 'local'
-                ? `本地接口未连接，页面正在使用前端样本数据展示。${dataTierNotice}`
+                : apiStatus.status === 'offline'
+                ? '当前未连接本地服务，也未读取到收盘快照。请运行 bash start.sh 后重新加载。'
                 : `当前页面用于策略流程演示，数据源：${dataSourceLabel}，请结合数据源状态理解扫描结果。${dataTierNotice}${providerOrderNotice}${providerFallbackNotice}${tushareNotice}`;
             const scanDateLabel = remoteData ? '扫描日期' : awaitingLocalScan ? '扫描状态' : '演示日期';
             const scanDateValue = remoteData ? latestScanDate : awaitingLocalScan ? '待扫描' : currentDate;
@@ -1044,7 +1130,7 @@
                         }
                         stats={
                             <>
-                                <StatBlock label="运行策略" value={cleanDisplayText(activeData.strategyName) || '未应用'} tone={activeData.strategyName !== "无运行策略" ? 'text-blue-400' : 'text-zinc-500'} />
+                        <StatBlock label="运行策略" value={cleanDisplayText(activeData.strategyName) || '未应用'} tone={activeData.strategyName !== "无运行策略" ? 'text-blue-400' : 'text-zinc-500'} textValue />
                                 <StatBlock label={signalStatLabel} value={`${signals.length} 只`} tone={signals.length ? 'text-green-400' : 'text-zinc-400'} helper={isLiveDate ? '今日候选' : '历史复盘'} />
                                 <StatBlock label="模拟持仓" value={`${positions.length} 笔`} tone={positions.length ? 'text-blue-300' : 'text-zinc-400'} helper={positions.length ? '当前持仓' : '尚未加入'} />
                                 <StatBlock label="市场开关" value={activeData.funnel.s0.text} tone={activeData.funnel.s0.status === 'pass' ? 'text-green-400' : 'text-red-400'} helper="大盘环境" />
@@ -1081,7 +1167,7 @@
                                     </div>
                                 )
                             }
-                            className="w-full lg:w-[360px] shrink-0 min-h-[520px]"
+                            className="order-2 w-full lg:order-1 lg:w-[360px] shrink-0 min-h-[520px]"
                             headerClass="px-4 py-3"
                             bodyClass="p-4 space-y-4"
                         >
@@ -1092,13 +1178,13 @@
                             </div>
                             {['s0', 's1', 's2'].map((step, idx) => (
                             <div key={step} className="bg-[#111216] border border-zinc-800/60 rounded-lg overflow-hidden shrink-0">
-                                <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-zinc-800/50" onClick={() => toggleStep(step)}>
+                                <button type="button" aria-expanded={expandedSteps[step]} className="ui-touch-target flex w-full items-center justify-between p-3 text-left hover:bg-zinc-800/50" onClick={() => toggleStep(step)}>
                                     <div className="flex items-center space-x-2 text-sm">
                                         {expandedSteps[step] ? <Icons.ChevronDown size={14} className="text-zinc-500"/> : <Icons.ChevronRight size={14} className="text-zinc-500"/>}
                                         <span className="font-mono text-zinc-300">{idx===0?'第 0 步：市场环境':idx===1?'第 1 步：发现阶段':'第 2 步：进场筛选'}</span>
                                     </div>
                                     <Badge type={activeData.funnel[step].status}>{activeData.funnel[step].text}</Badge>
-                                </div>
+                                </button>
                                 {expandedSteps[step] && activeData.details[step].length > 0 && (
                                 <div className="px-3 pb-3 pt-1 font-mono text-xs text-zinc-400 leading-6">
                                     {activeData.details[step].map((item, i, arr) => (
@@ -1113,12 +1199,12 @@
                             ))}
                         </Card>
 
-                        <div className="flex-1 flex flex-col gap-4 md:gap-6 min-w-0 self-stretch lg:min-h-[760px]">
+                        <div className="order-1 flex-1 flex flex-col gap-4 md:gap-6 min-w-0 self-stretch lg:order-2 lg:min-h-[760px]">
                             <Card
                                 title={<><Icons.Play className="mr-2 text-green-500" size={16}/>{signalTitle}<span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{signals.length}</span></>}
                                 actions={
                                     <div className={BOARD_FILTER_GROUP_CLASS}>
-                                        <div className={META_PILL_CLASS}>
+                                        <div className={`${META_PILL_CLASS} hidden sm:inline-flex`}>
                                             <span className={META_LABEL_CLASS}>当前显示</span>
                                             <span className={META_VALUE_CLASS}>{filteredSignals.length}</span>
                                         </div>
@@ -1173,14 +1259,32 @@
                                 headerClass="px-4 py-3"
                                 bodyClass="p-0 overflow-x-auto"
                             >
-                                <table className="w-full text-sm text-left min-w-[500px]">
+                                <div className="space-y-3 p-3 md:hidden">
+                                    {filteredSignals.map(row => (
+                                        <div key={row.id} className="rounded-lg border border-zinc-800/70 bg-[#111216] p-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <button type="button" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName})} className="ui-touch-target min-w-0 text-left">
+                                                    <span className="block font-mono text-sm text-blue-400">{row.id}</span>
+                                                    <span className="mt-1 block text-sm font-medium text-zinc-200">{row.name}</span>
+                                                </button>
+                                                <Badge type="ready">{stockBoardOf(row.id) === 'gem' ? '创业板' : stockBoardOf(row.id) === 'star' ? '科创板' : stockBoardOf(row.id) === 'bj' ? '北交所' : '主板'}</Badge>
+                                            </div>
+                                            <p className="mt-3 text-xs leading-5 text-zinc-400">{row.reason}</p>
+                                            <Button variant="success" disabled={!isLiveDate || !canOperateSimulation} disabledReason={!canOperateSimulation ? '收盘快照或样本数据不能修改模拟持仓' : '历史结果只读'} onClick={() => handleBuy(row)} className="mt-3 w-full">
+                                                {isLiveDate && canOperateSimulation ? '加入模拟持仓' : '只读'}
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {filteredSignals.length === 0 && <ActionableEmptyState title={awaitingLocalScan ? '尚未执行本地扫描' : '暂无可处理信号'} description={awaitingLocalScan ? '确认运行策略后，使用页头的“执行扫描”生成候选。' : '当前板块或本次扫描没有可处理的候选。'} />}
+                                </div>
+                                <table className="hidden md:table w-full text-sm text-left min-w-[500px]">
                                     <thead className="text-xs text-zinc-500 border-b border-zinc-800/60 sticky top-0 bg-[#16181D] z-10">
                                         <tr><th className="py-3 px-4 font-normal">代码</th><th className="py-3 px-4 font-normal">名称</th><th className="py-3 px-4 font-normal">命中原因</th><th className="py-3 px-4 font-normal text-right">操作</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-zinc-800/40 font-mono text-zinc-300">
                                         {filteredSignals.map(row => (
                                             <tr key={row.id} className="hover:bg-zinc-800/30 group">
-                                            <td className="py-3 px-4 text-blue-400 cursor-pointer hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName})}>{row.id}</td>
+                                            <td className="py-3 px-4"><button type="button" className="ui-touch-target font-mono text-blue-400 hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName})}>{row.id}</button></td>
                                             <td className="py-3 px-4 text-zinc-200 font-sans">{row.name}</td><td className="py-3 px-4 text-zinc-400">{row.reason}</td>
                                             <td className="py-3 px-4 text-right"><button disabled={!isLiveDate || !canOperateSimulation} onClick={() => handleBuy(row)} className={`text-xs border px-3 py-1 rounded-md transition-colors ${isLiveDate && canOperateSimulation ? 'bg-green-950 text-green-400 border-green-800/60 hover:bg-green-900' : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'}`}>{isLiveDate && canOperateSimulation ? '加入模拟持仓' : '只读'}</button></td>
                                             </tr>
@@ -1237,7 +1341,7 @@
                                         }
                                         return (
                                             <tr key={row.id} className={`${rowStyle} transition-colors group`}>
-                                            <td className="py-3 px-4 text-blue-400 cursor-pointer hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName, reason: row.msg})} >{row.id}</td>
+                                            <td className="py-3 px-4"><button type="button" className="ui-touch-target font-mono text-blue-400 hover:underline" onClick={() => onOpenStockDetail({...row, code: row.id, strategyName: activeData.strategyName, reason: row.msg})}>{row.id}</button></td>
                                             <td className="py-3 px-4 text-zinc-200 font-sans">{row.name}{row.strategyName ? <span className="block text-[10px] text-zinc-600 font-mono mt-0.5">{row.strategyName}</span> : null}</td><td className={`py-3 px-4 ${profitStyle}`}>{row.profit}</td>
                                             <td className="py-3 px-4 flex items-center space-x-1.5">{row.status === 'danger' && <Icons.AlertTriangle size={14} className="text-red-500 shrink-0" />}<span className={msgStyle}>{cleanDisplayText(row.msg)}</span></td>
                                             <td className="py-3 px-4 text-right">{btn}</td>
@@ -1257,9 +1361,10 @@
         // ==========================================
         // 子视图：2. 策略页 (Strategy)
         // ==========================================
-        const ViewStrategy = ({ strategies, setStrategies, appliedId, setAppliedId, setAppliedStrategySnapshot, onShowToast }) => {
+        const ViewStrategy = ({ strategies, setStrategies, appliedId, setAppliedId, setAppliedStrategySnapshot, capabilities, onShowToast, onRequestConfirm }) => {
             const [activeCardId, setActiveCardId] = useStickyState(appliedId || strategies[0]?.id || null, 'lq_activeStrategyCardId');
             const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+            const [isLibraryOpen, setIsLibraryOpen] = useState(false);
             const hasActiveStrategy = strategies.some(s => s.id === activeCardId);
             const activeStrategy = strategies.find(s => s.id === activeCardId) || strategies.find(s => s.id === appliedId) || strategies[0];
             const strategyIdsKey = strategies.map(s => s.id).join(',');
@@ -1277,6 +1382,7 @@
             }, [hasUnsavedChanges, strategies]);
 
             const handleCreateStrategy = () => {
+                if (!capabilities.canEditStrategy) return onShowToast('收盘快照只读，请在本地完整版中新建策略');
                 const newStrategy = {
                     id: 'str_' + Date.now(),
                     name: '新建自定义策略',
@@ -1291,6 +1397,7 @@
             };
 
             const handleNameChange = (e) => {
+                if (!capabilities.canEditStrategy) return;
                 const newName = e.target.value;
                 setStrategies(strategies.map(s => s.id === activeCardId ? { ...s, name: newName } : s));
                 setHasUnsavedChanges(true);
@@ -1298,16 +1405,19 @@
 
             const handleDeleteStrategy = (e, id, name) => {
                 e.stopPropagation();
-                if(!confirm(`确定删除策略【${name}】吗？`)) return;
-                const newStrategies = strategies.filter(s => s.id !== id);
-                setStrategies(newStrategies);
-                if (activeCardId === id) setActiveCardId(newStrategies[0]?.id || null);
-                if (appliedId === id) setAppliedId(null);
-                if (appliedId === id) setAppliedStrategySnapshot(null);
-                onShowToast(`策略【${name}】已删除`);
+                if (!capabilities.canEditStrategy) return onShowToast('收盘快照只读，不能删除策略');
+                onRequestConfirm({ title: '删除策略', body: `将删除策略【${name}】。如果它是当前运行策略，监控页将回到未应用状态。`, confirmLabel: '确认删除' }, () => {
+                    const newStrategies = strategies.filter(s => s.id !== id);
+                    setStrategies(newStrategies);
+                    if (activeCardId === id) setActiveCardId(newStrategies[0]?.id || null);
+                    if (appliedId === id) setAppliedId(null);
+                    if (appliedId === id) setAppliedStrategySnapshot(null);
+                    onShowToast(`策略【${name}】已删除`);
+                });
             };
 
             const updateActiveStrategy = (patch) => {
+                if (!capabilities.canEditStrategy) return;
                 setStrategies(strategies.map(s => s.id === activeCardId ? normalizeStrategy({ ...s, ...patch, updatedAt: formatToday() }) : s));
             };
 
@@ -1317,6 +1427,7 @@
             };
 
             const handleApply = () => {
+                if (!capabilities.canEditStrategy) return onShowToast('收盘快照只读，请在本地完整版中应用策略');
                 setActiveCardId(activeStrategy.id);
                 setAppliedId(activeStrategy.id);
                 setAppliedStrategySnapshot(activeStrategy);
@@ -1326,6 +1437,7 @@
             };
 
             const handleCancelApply = () => {
+                if (!capabilities.canEditStrategy) return onShowToast('收盘快照只读，不能更改运行策略');
                 setAppliedId(null);
                 setAppliedStrategySnapshot(null);
                 setStrategies(strategies.map(s => ({ ...s, status: 'idle' })));
@@ -1346,11 +1458,17 @@
                             </>
                         }
                     />
+                    {!capabilities.canEditStrategy && <ReadOnlyModeNotice mode={capabilities.mode} />}
+                    <div className="md:hidden rounded-lg border border-zinc-800/70 bg-[#15171C] p-4">
+                        <div className="text-[10px] font-mono text-zinc-500">当前编辑策略</div>
+                        <div className="mt-1 text-sm font-bold text-zinc-200">{cleanDisplayText(activeStrategy?.name) || '未选择策略'}</div>
+                        <Button variant="secondary" onClick={() => setIsLibraryOpen(value => !value)} className="mt-3 w-full" aria-expanded={isLibraryOpen}>{isLibraryOpen ? '收起策略库' : '切换策略'}</Button>
+                    </div>
                     <div className="flex-1 flex flex-col md:flex-row gap-4 md:gap-6 overflow-visible w-full min-h-min">
                     <Card
                         title={<><Icons.FileText className="mr-2 text-zinc-400" size={16}/>策略库</>}
-                        actions={<button onClick={handleCreateStrategy} className="text-zinc-400 hover:text-zinc-200 transition-colors bg-zinc-800/50 hover:bg-zinc-800 p-1 rounded-md"><Icons.Plus size={16} /></button>}
-                        className="w-full md:w-80 shrink-0 h-[350px] md:h-fit"
+                        actions={<IconButton label={capabilities.canEditStrategy ? '新建策略' : '只读，本地完整版可新建策略'} onClick={handleCreateStrategy} disabled={!capabilities.canEditStrategy}><Icons.Plus size={16} /></IconButton>}
+                        className={`${isLibraryOpen ? 'flex' : 'hidden'} w-full md:flex md:w-80 shrink-0 h-[350px] md:h-fit`}
                         headerClass="px-6 py-3"
                         bodyClass="p-3 space-y-3 overflow-y-auto"
                     >
@@ -1359,11 +1477,11 @@
                             const isSelected = s.id === activeCardId;
                             const isApplied = s.id === appliedId;
                             return (
-                            <div key={s.id} onClick={() => setActiveCardId(s.id)}
+                            <div key={s.id} role="button" tabIndex="0" aria-pressed={isSelected} onClick={() => { setActiveCardId(s.id); setIsLibraryOpen(false); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActiveCardId(s.id); setIsLibraryOpen(false); } }}
                                 className={`p-3 rounded-lg cursor-pointer border transition-all group ${isSelected ? 'bg-zinc-800/80 border-zinc-500' : 'bg-[#111216] border-zinc-800/50 hover:border-zinc-700'}`}>
                                 <div className="flex justify-between items-start mb-2">
                                     <div className="font-bold text-sm text-zinc-200 truncate pr-2">{cleanDisplayText(s.name)}</div>
-                                    <button onClick={(e) => handleDeleteStrategy(e, s.id, s.name)} className="text-zinc-500 hover:text-red-400 transition-colors p-0.5 -mt-0.5 -mr-0.5"><Icons.Trash2 size={14}/></button>
+                                    <IconButton label={`删除${cleanDisplayText(s.name)}`} onClick={(e) => handleDeleteStrategy(e, s.id, s.name)} disabled={!capabilities.canEditStrategy} className="-mr-1 -mt-1 hover:text-red-400"><Icons.Trash2 size={14}/></IconButton>
                                 </div>
                                 <div className="text-xs text-zinc-500 truncate mb-2">{cleanDisplayText(s.description)}</div>
                                 <div className="text-[10px] text-zinc-600 truncate mb-2 font-mono">{s.config ? strategyRuleSummary(s.config) : '未配置规则'}</div>
@@ -1383,8 +1501,8 @@
                         title={
                             activeStrategy ? (
                                 <div className="flex flex-col py-1">
-                                    <input type="text" value={cleanDisplayText(activeStrategy.name)} onChange={handleNameChange} placeholder="请输入策略名称"
-                                        className="text-lg md:text-xl font-bold text-zinc-100 bg-transparent hover:bg-zinc-800/50 focus:bg-[#111216] focus:ring-1 focus:ring-zinc-700 outline-none rounded-md px-2 -ml-2 transition-colors w-[200px] md:w-[400px]" />
+                                    <input type="text" value={cleanDisplayText(activeStrategy.name)} onChange={handleNameChange} readOnly={!capabilities.canEditStrategy} aria-readonly={!capabilities.canEditStrategy} placeholder="请输入策略名称"
+                                        className="text-lg md:text-xl font-bold text-zinc-100 bg-transparent hover:bg-zinc-800/50 focus:bg-[#111216] focus:ring-1 focus:ring-zinc-700 outline-none rounded-md px-2 -ml-2 transition-colors w-[150px] sm:w-[200px] md:w-[400px]" />
                                     <p className="text-[10px] font-mono text-zinc-500 ml-1 mt-0.5">来源: {activeStrategy.source} | {hasUnsavedChanges ? <span className="text-yellow-500">正在自动保存…</span> : `已自动保存 · ${activeStrategy.updatedAt}`}</p>
                                 </div>
                             ) : "未选择策略"
@@ -1396,11 +1514,11 @@
                                         <Icons.Save size={13} className="mr-1.5"/> 自动保存
                                     </span>
                                     {appliedId === activeStrategy.id ? (
-                                        <button onClick={handleCancelApply} className="px-3 md:px-4 py-1.5 rounded-md bg-zinc-800 text-red-400 text-sm font-medium hover:bg-zinc-700 transition-colors flex items-center border border-zinc-700 whitespace-nowrap">
+                                        <button onClick={handleCancelApply} disabled={!capabilities.canEditStrategy} title={!capabilities.canEditStrategy ? '收盘快照只读，请在本地完整版中操作' : '取消当前运行策略'} className="ui-control px-3 md:px-4 py-1.5 rounded-md bg-zinc-800 text-red-400 text-sm font-medium hover:bg-zinc-700 transition-colors flex items-center border border-zinc-700 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50">
                                         <Icons.XCircle size={14} className="mr-2"/> 取消应用
                                         </button>
                                     ) : (
-                                        <button onClick={handleApply} className="px-3 md:px-4 py-1.5 rounded-md bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors flex items-center whitespace-nowrap">
+                                        <button onClick={handleApply} disabled={!capabilities.canEditStrategy} title={!capabilities.canEditStrategy ? '收盘快照只读，请在本地完整版中应用策略' : '将当前策略应用到监控页'} className="ui-control px-3 md:px-4 py-1.5 rounded-md bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors flex items-center whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50">
                                         <Icons.Zap size={14} className="mr-2"/> 立即应用
                                         </button>
                                     )}
@@ -1408,7 +1526,7 @@
                             )
                         }
                     >
-                        {activeStrategy ? <RuleConfigurator config={activeStrategy.config} onChange={handleConfigChange} /> : <div className="flex h-full items-center justify-center text-zinc-600 font-mono">请在左侧选择或新建一个策略</div>}
+                        {activeStrategy ? <RuleConfigurator config={activeStrategy.config} onChange={handleConfigChange} readOnly={!capabilities.canEditStrategy} /> : <ActionableEmptyState title="尚未选择策略" description="从策略库选择一套策略，或在本地完整版中新建。" />}
                     </Card>
                     </div>
                 </PageShell>
@@ -1418,7 +1536,7 @@
         // ==========================================
         // 子视图：3. 历史复盘页 (History)
         // ==========================================
-        const ViewHistory = ({ historyTrades, setHistoryTrades, onShowToast, onOpenStockDetail }) => {
+        const ViewHistory = ({ historyTrades, setHistoryTrades, capabilities, onShowToast, onOpenStockDetail, onNavigate, onRequestConfirm }) => {
             const [showNotice, setShowNotice] = useState(true);
             const totalReturn = historyTrades.reduce((sum, tr) => sum + parseReturn(tr.return), 0);
             const wins = historyTrades.filter(tr => parseReturn(tr.return) > 0).length;
@@ -1428,9 +1546,15 @@
             const disciplineRate = historyTrades.length ? `${((disciplined / historyTrades.length) * 100).toFixed(1)}%` : '0.0%';
             const handleClearHistory = () => {
                 if (!historyTrades.length) return;
-                if (!confirm('确定清空全部历史交易记录吗？此操作只会清除本浏览器里的模拟交易历史，无法撤回。')) return;
-                setHistoryTrades([]);
-                onShowToast('历史交易记录已清空');
+                if (!capabilities.canMutateHistory) return onShowToast('收盘快照为只读，本页不能清空记录');
+                onRequestConfirm({
+                    title: '清空历史交易记录',
+                    body: '将清除本浏览器内的全部模拟交易历史，此操作无法撤回。',
+                    confirmLabel: '确认清空'
+                }, () => {
+                    setHistoryTrades([]);
+                    onShowToast('历史交易记录已清空');
+                });
             };
             return (
             <PageShell>
@@ -1446,6 +1570,7 @@
                         </>
                     }
                 />
+                {!capabilities.canMutateHistory && <ReadOnlyModeNotice mode={capabilities.mode} />}
                 {showNotice && <NoticeStrip type="neutral" onDismiss={() => setShowNotice(false)}>历史记录来自本地模拟交易，用于复盘规则执行过程；截图发布时建议保留“原型演示”语境。</NoticeStrip>}
 
                 <Card
@@ -1453,10 +1578,10 @@
                     actions={
                         <button
                             onClick={handleClearHistory}
-                            disabled={!historyTrades.length}
-                            title={historyTrades.length ? '清空历史交易记录' : '暂无历史交易记录'}
+                            disabled={!historyTrades.length || !capabilities.canMutateHistory}
+                            title={!capabilities.canMutateHistory ? '收盘快照只读，请在本地完整版中管理历史' : historyTrades.length ? '清空历史交易记录' : '暂无历史交易记录'}
                             aria-label="清空历史交易记录"
-                            className={`h-8 inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${historyTrades.length ? 'border-red-900/70 bg-[#111216] text-red-400 hover:bg-red-950/30' : 'border-zinc-800 bg-[#111216] text-zinc-600 cursor-not-allowed'}`}
+                            className={`ui-touch-target h-8 inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${historyTrades.length && capabilities.canMutateHistory ? 'border-red-900/70 bg-[#111216] text-red-400 hover:bg-red-950/30' : 'border-zinc-800 bg-[#111216] text-zinc-600 cursor-not-allowed'}`}
                         >
                             <Icons.Trash2 size={14} />
                             <span>清空记录</span>
@@ -1466,14 +1591,30 @@
                     headerClass="px-6 py-3"
                     bodyClass="p-0 overflow-x-auto"
                 >
-                    <table className="w-full text-sm text-left min-w-[700px]">
+                    <div className="space-y-3 p-3 md:hidden">
+                        {historyTrades.map(tr => (
+                            <article key={tr.id} className="rounded-lg border border-zinc-800/70 bg-[#111216] p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <button type="button" className="ui-touch-target min-w-0 text-left" onClick={() => onOpenStockDetail({code: tr.code, name: tr.name, reason: tr.reason, return: tr.return, entryDate: tr.entry})}>
+                                        <span className="block font-mono text-sm text-blue-400">{tr.code}</span><span className="mt-1 block text-sm text-zinc-200">{tr.name}</span>
+                                    </button>
+                                    <span className={`font-mono text-lg font-bold ${tr.return.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>{tr.return}</span>
+                                </div>
+                                <div className="mt-3 flex items-center gap-2 text-xs font-mono text-zinc-500"><span>{tr.entry}</span><Icons.ArrowRight size={12}/><span>{tr.exit}</span></div>
+                                <p className="mt-3 text-xs leading-5 text-zinc-400">{cleanDisplayText(tr.reason)}</p>
+                                <div className="mt-3 flex justify-end">{tr.status === 'DISCIPLINE' ? <Badge type="pass">纪律离场</Badge> : <Badge type="fail">违规离场 · 成本 {tr.cost}元</Badge>}</div>
+                            </article>
+                        ))}
+                        {historyTrades.length === 0 && <ActionableEmptyState title="暂无历史交易记录" description="在本地完整版中执行扫描，将观察标的加入模拟持仓并记录离场后，结果会出现在这里。" action={<Button variant="secondary" onClick={() => onNavigate('监控')}>返回监控页</Button>} />}
+                    </div>
+                    <table className="hidden md:table w-full text-sm text-left min-w-[700px]">
                         <thead className="text-xs text-zinc-500 border-b border-zinc-800/60 sticky top-0 bg-[#16181D] z-10">
                             <tr><th className="py-3 px-6 font-normal">代码名称</th><th className="py-3 px-6 font-normal">入场 / 离场日期</th><th className="py-3 px-6 font-normal">最终收益</th><th className="py-3 px-6 font-normal">离场原因</th><th className="py-3 px-6 font-normal text-right">纪律状态</th></tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/40 font-mono text-zinc-300">
                             {historyTrades.map(tr => (
                             <tr key={tr.id} className="hover:bg-zinc-800/30 transition-colors">
-                                <td className="py-3 px-6"><div className="text-blue-400 cursor-pointer hover:underline" onClick={() => onOpenStockDetail({code: tr.code, name: tr.name, reason: tr.reason, return: tr.return, entryDate: tr.entry})}>{tr.code}</div><div className="text-xs text-zinc-500 font-sans">{tr.name}</div></td>
+                                <td className="py-3 px-6"><button type="button" className="ui-touch-target font-mono text-blue-400 hover:underline" onClick={() => onOpenStockDetail({code: tr.code, name: tr.name, reason: tr.reason, return: tr.return, entryDate: tr.entry})}>{tr.code}</button><div className="text-xs text-zinc-500 font-sans">{tr.name}</div></td>
                                 <td className="py-3 px-6 text-zinc-400 flex items-center mt-2">{tr.entry} <Icons.ArrowRight size={12} className="mx-2 text-zinc-600"/> {tr.exit}</td>
                                 <td className={`py-3 px-6 text-lg font-bold ${tr.return.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>{tr.return}</td>
                                 <td className="py-3 px-6 text-zinc-400 text-xs">{cleanDisplayText(tr.reason)}</td>
@@ -1482,7 +1623,7 @@
                                 </td>
                             </tr>
                             ))}
-                            {historyTrades.length === 0 && <tr><td colSpan="5" className="text-center py-12 text-zinc-600">暂无历史交易记录</td></tr>}
+                            {historyTrades.length === 0 && <tr><td colSpan="5"><ActionableEmptyState title="暂无历史交易记录" description="模拟持仓记录离场后，结果会出现在这里。" action={<Button variant="secondary" onClick={() => onNavigate('监控')}>返回监控页</Button>} /></td></tr>}
                         </tbody>
                     </table>
                 </Card>
@@ -1493,7 +1634,7 @@
         // ==========================================
         // 子视图：4. 回测页 (Backtest)
         // ==========================================
-        const ViewBacktest = ({ strategies, setStrategies, backtests, setBacktests, apiStatus, onShowToast }) => {
+        const ViewBacktest = ({ strategies, setStrategies, backtests, setBacktests, apiStatus, capabilities, onShowToast, onRequestConfirm }) => {
             const [detailId, setDetailId] = useState(null);
             const [isCreating, setIsCreating] = useState(false);
             const [isStartingBacktest, setIsStartingBacktest] = useState(false);
@@ -1501,6 +1642,7 @@
             const [draft, setDraft] = useState({ name: '未命名回测 202605', range: '2025-01-01 ~ 2026-01-01', capital: '100000', config: createRuleConfig() });
 
             const handleImport = (bt) => {
+                if (!capabilities.canRunBacktest) return onShowToast('收盘快照只读，请在本地完整版中导入策略');
                 const newStrategy = {
                     id: 'str_' + Date.now(),
                     name: bt.name + ' (回测导入)', status: 'idle', source: '回测导入',
@@ -1514,6 +1656,7 @@
             };
 
             const handleStartBacktest = () => {
+                if (!capabilities.canRunBacktest) return onShowToast('收盘快照只读，请在本地完整版中执行回测');
                 if (!draft.name.trim()) return onShowToast('请输入回测名称');
                 if (isStartingBacktest) return;
                 setIsStartingBacktest(true);
@@ -1546,10 +1689,11 @@
             };
 
             const handleDelete = (id, name) => {
-                if(confirm(`确定删除回测记录【${name}】吗？`)){
+                if (!capabilities.canRunBacktest) return onShowToast('收盘快照只读，不能删除回测记录');
+                onRequestConfirm({ title: '删除回测记录', body: `将删除回测记录【${name}】，已导入到策略库的策略不受影响。`, confirmLabel: '确认删除' }, () => {
                     setBacktests(backtests.filter(b => b.id !== id));
                     onShowToast(`回测记录【${name}】已删除`);
-                }
+                });
             };
 
             if (isCreating) {
@@ -1649,22 +1793,38 @@
                     <PageHeader
                         title="回测任务大厅"
                         subtitle="集中展示回测记录、同步状态和策略导入入口，适合截取为项目能力总览。"
-                        actions={<button onClick={() => setIsCreating(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 md:px-4 py-1.5 rounded-md flex items-center text-sm font-medium transition-colors"><Icons.Plus size={14} className="mr-1" /> 新建回测</button>}
+                        actions={<Button variant="primary" onClick={() => capabilities.canRunBacktest ? setIsCreating(true) : onShowToast('收盘快照只读，请在本地完整版中新建回测')} disabled={!capabilities.canRunBacktest} disabledReason="收盘快照只读，请在本地完整版中新建回测"><Icons.Plus size={14} /> 新建回测</Button>}
                         stats={
                             <>
                                 <StatBlock label="回测任务" value={`${backtests.length} 个`} tone="text-zinc-100" helper="回测记录" />
                                 <StatBlock label="已导入" value={`${backtests.filter(bt => bt.synced).length} 个`} tone="text-green-400" helper="已导入策略库" />
                                 <StatBlock label="最高收益" value={backtests[0]?.return || '--'} tone={backtests[0]?.return?.startsWith('+') ? 'text-green-400' : 'text-zinc-400'} helper="列表首项" />
-                                <StatBlock label="引擎状态" value={apiStatus.label} tone={apiStatus.status === 'online' ? 'text-blue-300' : 'text-zinc-400'} helper="本地状态" />
+                                <StatBlock label="引擎状态" value={apiStatus.label} tone={apiStatus.status === 'online' ? 'text-blue-300' : 'text-zinc-400'} textValue />
                             </>
                         }
                     />
+                    {!capabilities.canRunBacktest && <ReadOnlyModeNotice mode={capabilities.mode} />}
                     {showNotice && <NoticeStrip type="warning" onDismiss={() => setShowNotice(false)}>当前回测用于原型演示，尚未覆盖滑点、手续费、停牌、涨跌停和严格逐日持仓逻辑。</NoticeStrip>}
                     <Card
                         title={<><Icons.Activity className="mr-2 text-blue-500" size={16}/>回测记录</>}
                         className="flex-1" headerClass="px-4 py-3" bodyClass="p-0 overflow-x-auto"
                     >
-                        <table className="w-full text-sm text-left min-w-[700px]">
+                        <div className="space-y-3 p-3 md:hidden">
+                            {backtests.map(bt => (
+                                <article key={bt.id} className="rounded-lg border border-zinc-800/70 bg-[#111216] p-3">
+                                    <div className="flex items-start justify-between gap-3"><div className="min-w-0 text-sm font-medium text-zinc-200">{bt.name}</div><Badge type={bt.synced ? 'pass' : 'neutral'}>{bt.synced ? '已导入' : '未导入'}</Badge></div>
+                                    <div className="mt-3 text-xs font-mono text-zinc-500">{bt.range}</div>
+                                    <div className="mt-3 grid grid-cols-2 gap-3"><div><div className="text-[10px] text-zinc-600">总收益</div><div className={`mt-1 font-mono font-bold ${bt.return.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>{bt.return}</div></div><div><div className="text-[10px] text-zinc-600">胜率</div><div className="mt-1 font-mono text-blue-400">{bt.winRate}</div></div></div>
+                                    <div className="mt-4 grid grid-cols-3 gap-2">
+                                        <Button variant="secondary" onClick={() => setDetailId(bt.id)}>详情</Button>
+                                        <Button variant="secondary" disabled={!capabilities.canRunBacktest} disabledReason="只读快照不能导入策略" onClick={() => handleImport(bt)}>{bt.synced ? '再次导入' : '导入'}</Button>
+                                        <Button variant="danger" disabled={!capabilities.canRunBacktest} disabledReason="只读快照不能删除记录" onClick={() => handleDelete(bt.id, bt.name)}>删除</Button>
+                                    </div>
+                                </article>
+                            ))}
+                            {backtests.length === 0 && <ActionableEmptyState title="暂无回测记录" description="在本地完整版中新建回测，完成后可查看结果并导回策略库。" />}
+                        </div>
+                        <table className="hidden md:table w-full text-sm text-left min-w-[700px]">
                         <thead className="text-xs text-zinc-500 border-b border-zinc-800/60 sticky top-0 bg-[#16181D] z-10">
                             <tr><th className="py-3 px-4 font-normal">回测名称</th><th className="py-3 px-4 font-normal">测试区间</th><th className="py-3 px-4 font-normal">总收益</th><th className="py-3 px-4 font-normal">胜率</th><th className="py-3 px-4 font-normal">同步</th><th className="py-3 px-4 font-normal text-right">操作</th></tr>
                         </thead>
@@ -1688,17 +1848,19 @@
                                         </button>
                                         <button
                                             onClick={() => handleImport(bt)}
+                                            disabled={!capabilities.canRunBacktest}
                                             title={bt.synced ? '再次导入策略' : '导入策略'}
                                             aria-label={`${bt.synced ? '再次导入' : '导入'}${bt.name}到策略库`}
-                                            className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-zinc-800 bg-[#111216] text-zinc-500 hover:text-blue-300 hover:border-blue-800/70 hover:bg-blue-950/30 transition-colors"
+                                            className="ui-touch-target h-8 w-8 inline-flex items-center justify-center rounded-md border border-zinc-800 bg-[#111216] text-zinc-500 hover:text-blue-300 hover:border-blue-800/70 hover:bg-blue-950/30 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             <Icons.ArrowRight size={14} />
                                         </button>
                                         <button
                                             onClick={() => handleDelete(bt.id, bt.name)}
+                                            disabled={!capabilities.canRunBacktest}
                                             title="删除记录"
                                             aria-label={`删除${bt.name}`}
-                                            className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-zinc-800 bg-[#111216] text-zinc-500 hover:text-red-400 hover:border-red-900/70 hover:bg-red-950/30 transition-colors"
+                                            className="ui-touch-target h-8 w-8 inline-flex items-center justify-center rounded-md border border-zinc-800 bg-[#111216] text-zinc-500 hover:text-red-400 hover:border-red-900/70 hover:bg-red-950/30 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             <Icons.Trash2 size={14} />
                                         </button>
@@ -1706,7 +1868,7 @@
                                 </td>
                             </tr>
                             ))}
-                            {backtests.length === 0 && <tr><td colSpan="6" className="text-center py-12 text-zinc-600">暂无回测记录</td></tr>}
+                            {backtests.length === 0 && <tr><td colSpan="6"><ActionableEmptyState title="暂无回测记录" description="在本地完整版中新建回测，完成后可导回策略库。" /></td></tr>}
                         </tbody>
                         </table>
                     </Card>
@@ -1739,6 +1901,7 @@
             const [apiStatus, setApiStatus] = useState({ status: 'offline', label: '本地引擎', provider: 'local' });
             const [serverDefaultParams, setServerDefaultParams] = useState(null);
             const [staticScan, setStaticScan] = useState(null);
+            const [confirmState, setConfirmState] = useState(null);
 
             const normalizedStrategies = strategies.map((s, i) => normalizeStrategy(s, i, serverDefaultParams));
             const appliedStrategySource = normalizedStrategies.find(s => s.id === appliedStrategyId) || null;
@@ -1754,32 +1917,34 @@
 
             useEffect(() => {
                 let cancelled = false;
-                fetchJson('/api/health')
-                    .then(data => {
+                const loadStaticMode = () => Promise.all([
+                    fetchJson('public-data/run-status.json'),
+                    fetchJson('public-data/latest-scan.json')
+                ]).then(([status, latest]) => {
+                    if (cancelled) return;
+                    setStaticScan(latest);
+                    setApiStatus({
+                        status: 'static',
+                        label: dataSourceName(latest.provider || status.provider || 'static'),
+                        provider: latest.provider || status.provider || 'static',
+                        warnings: [...(status.warnings || []), ...(latest.warnings || [])],
+                        runAt: latest.runAt || status.runAt,
+                        tradeDate: latest.tradeDate || status.tradeDate
+                    });
+                });
+                const explicitMode = new URLSearchParams(window.location.search).get('mode');
+                const isDocumentedLocal = ['127.0.0.1', 'localhost'].includes(window.location.hostname) && window.location.port === '8765' && explicitMode !== 'static';
+                const runtimeRequest = isDocumentedLocal
+                    ? fetchJson('/api/health').then(data => {
                         if (cancelled) return;
                         setStaticScan(null);
                         setApiStatus({ status: 'online', label: dataSourceName(data.provider), provider: data.provider, warnings: data.warnings || [], providerOrder: data.providerOrder || [], configured: data.configured || {} });
                         if (data.defaultParams) setServerDefaultParams(data.defaultParams);
-                    })
-                    .catch(() => {
-                        Promise.all([
-                            fetchJson('public-data/run-status.json'),
-                            fetchJson('public-data/latest-scan.json')
-                        ]).then(([status, latest]) => {
-                            if (cancelled) return;
-                            setStaticScan(latest);
-                            setApiStatus({
-                                status: 'static',
-                                label: dataSourceName(latest.provider || status.provider || 'static'),
-                                provider: latest.provider || status.provider || 'static',
-                                warnings: [...(status.warnings || []), ...(latest.warnings || [])],
-                                runAt: latest.runAt || status.runAt,
-                                tradeDate: latest.tradeDate || status.tradeDate
-                            });
-                        }).catch(() => {
-                            if (!cancelled) setApiStatus({ status: 'offline', label: '本地引擎', provider: 'local' });
-                        });
-                    });
+                    }).catch(loadStaticMode)
+                    : loadStaticMode();
+                runtimeRequest.catch(() => {
+                    if (!cancelled) setApiStatus({ status: 'offline', label: '未连接', provider: 'offline' });
+                });
                 return () => { cancelled = true; };
             }, []);
 
@@ -1794,14 +1959,26 @@
                 toastTimerRef.current = setTimeout(() => setToast(''), 3000);
             };
 
+            const runtimeMode = runtimeModeFromStatus(apiStatus.status);
+            const capabilities = capabilitiesForMode(runtimeMode, apiStatus.provider);
+            const runtimeLabel = runtimeMode === 'local' ? '本地完整版' : runtimeMode === 'static' ? '收盘快照 · 只读' : '未连接';
+            const requestConfirmation = (state, action) => setConfirmState({ ...state, action });
+            const closeConfirmation = () => setConfirmState(null);
+            const confirmAction = () => {
+                const action = confirmState?.action;
+                setConfirmState(null);
+                action?.();
+            };
+
             return (
-                <div className="h-screen w-screen bg-[#0D0E11] text-zinc-300 flex flex-col font-sans select-none overflow-hidden relative">
+                <div className="h-screen w-screen bg-[#0D0E11] text-zinc-300 flex flex-col font-sans overflow-hidden relative">
                     {/* 个股详情全局弹窗 */}
                     <StockDetailModal stock={selectedStock} onClose={() => setSelectedStock(null)} />
+                    <ConfirmDialog state={confirmState} onCancel={closeConfirmation} onConfirm={confirmAction} />
 
                     {/* 全局 Toast 提示 */}
                     {toast && (
-                        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-zinc-800/95 backdrop-blur-sm text-zinc-100 px-6 py-2.5 rounded-md shadow-[0_18px_60px_rgba(0,0,0,0.30)] z-50 text-sm font-medium border border-zinc-700/80">
+                        <div role="status" aria-live="polite" className="absolute top-16 left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2 bg-zinc-800/95 backdrop-blur-sm text-zinc-100 px-5 py-2.5 rounded-md shadow-[0_18px_60px_rgba(0,0,0,0.30)] z-50 text-sm font-medium border border-zinc-700/80">
                             {toast}
                         </div>
                     )}
@@ -1824,16 +2001,19 @@
                                 ))}
                             </nav>
                         </div>
-                        <div className="hidden lg:block shrink-0 text-[11px] font-mono text-zinc-600 whitespace-nowrap">
-                            © 2026 LINPO LAB · 仅供研究观察，不构成投资建议
+                        <div className="flex shrink-0 items-center gap-3">
+                            <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${runtimeMode === 'local' ? 'border-green-900/60 bg-green-950/30 text-green-400' : runtimeMode === 'static' ? 'border-blue-900/60 bg-blue-950/30 text-blue-300' : 'border-red-900/60 bg-red-950/30 text-red-400'}`}>{runtimeLabel}</span>
+                            <div className="hidden lg:block text-[11px] font-mono text-zinc-600 whitespace-nowrap">
+                                © 2026 LINPO LAB · 仅供研究观察，不构成投资建议
+                            </div>
                         </div>
                     </div>
 
                     <div className="flex-1 flex overflow-hidden relative w-full bg-[#0D0E11]">
-                        {activeTab === '监控' && <ViewMonitor appliedStrategy={appliedStrategy} positions={positions} setPositions={setPositions} historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} executedSignalIds={executedSignalIds} setExecutedSignalIds={setExecutedSignalIds} apiStatus={apiStatus} staticScan={staticScan} serverDefaultParams={serverDefaultParams} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
-                        {activeTab === '历史' && <ViewHistory historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
-                        {activeTab === '策略' && <ViewStrategy strategies={normalizedStrategies} setStrategies={setStrategies} appliedId={appliedStrategyId} setAppliedId={setAppliedStrategyId} setAppliedStrategySnapshot={setAppliedStrategySnapshot} onShowToast={showToast} />}
-                        {activeTab === '回测' && <ViewBacktest strategies={normalizedStrategies} setStrategies={setStrategies} backtests={backtests} setBacktests={setBacktests} apiStatus={apiStatus} onShowToast={showToast} />}
+                        {activeTab === '监控' && <ViewMonitor appliedStrategy={appliedStrategy} positions={positions} setPositions={setPositions} historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} executedSignalIds={executedSignalIds} setExecutedSignalIds={setExecutedSignalIds} apiStatus={apiStatus} staticScan={staticScan} serverDefaultParams={serverDefaultParams} capabilities={capabilities} onShowToast={showToast} onOpenStockDetail={setSelectedStock} />}
+                        {activeTab === '历史' && <ViewHistory historyTrades={historyTrades} setHistoryTrades={setHistoryTrades} capabilities={capabilities} onShowToast={showToast} onOpenStockDetail={setSelectedStock} onNavigate={setActiveTab} onRequestConfirm={requestConfirmation} />}
+                        {activeTab === '策略' && <ViewStrategy strategies={normalizedStrategies} setStrategies={setStrategies} appliedId={appliedStrategyId} setAppliedId={setAppliedStrategyId} setAppliedStrategySnapshot={setAppliedStrategySnapshot} capabilities={capabilities} onShowToast={showToast} onRequestConfirm={requestConfirmation} />}
+                        {activeTab === '回测' && <ViewBacktest strategies={normalizedStrategies} setStrategies={setStrategies} backtests={backtests} setBacktests={setBacktests} apiStatus={apiStatus} capabilities={capabilities} onShowToast={showToast} onRequestConfirm={requestConfirmation} />}
                     </div>
                 </div>
             );

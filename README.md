@@ -13,9 +13,9 @@
 当前项目按两个形态推进：
 
 - 本地原型版：本机启动 Python 服务，前端调用 `/api/*`，适合演示完整交互、模拟持仓和新建回测。
-- GitHub 固定演示版：前端放在 GitHub Pages，读取仓库内已整理好的 `public-data/*.json`，用于在线展示和截图。
+- GitHub 收盘快照版：前端放在 GitHub Pages，读取仓库内的 `public-data/*.json`，用于在线展示和截图。
 
-GitHub 固定演示版不是实时行情系统，也不会自动更新行情。它的目标是稳定展示策略漏斗、观察信号、模拟持仓、历史复盘和回测流程。需要尝试真实数据时，请下载项目并启动本地服务。
+GitHub 收盘快照版不是实时行情系统。它由 Close Scan 工作流在工作日收盘后更新一次，页面始终以只读方式展示最新收盘结果。需要编辑策略、执行扫描、管理模拟持仓或回测时，请下载项目并启动本地服务。
 
 核心目标是 A 股收盘后策略复盘与次日观察；核心数据是历史日线和收盘数据，不是盘中实时行情。
 
@@ -61,7 +61,7 @@ GitHub 固定演示版不是实时行情系统，也不会自动更新行情。�
 
 - 当前主要是产品原型，不是完整量化交易系统。
 - 免费数据源不稳定，AKShare、BaoStock 和新浪接口都可能因为网络、远端服务或字段变化失败。
-- GitHub 固定演示版只展示演示数据，不支持盘中实时扫描、自动下单或账户交易。
+- GitHub 收盘快照版只读展示收盘结果，不支持盘中实时扫描、策略编辑、模拟交易、回测任务或账户交易。
 - 回测还不是严格的逐日历史回测，部分逻辑使用当前横截面或样本数据兜底。
 - 部分策略因子来自行情快照的近似推导，例如资金流、MACD、RSI、北向资金等，不能等同于真实指标计算。
 - 策略、持仓、历史交易等前端状态主要存储在浏览器 `localStorage`；本地扫描记录存储在浏览器 `IndexedDB`。这些都只属于当前浏览器，不适合当作跨设备、长期可靠的数据仓库。
@@ -74,12 +74,12 @@ GitHub 固定演示版不是实时行情系统，也不会自动更新行情。�
 
 因此当前版本保留为可运行的本地原型，用于展示产品思路和整理后续方向。
 
-## GitHub 固定演示版
+## GitHub 收盘快照版
 
 这个版本的运行方式是：
 
 ```txt
-维护者整理固定演示数据
+GitHub Actions 工作日收盘后运行 Close Scan
         ↓
 写入 public-data/*.json
         ↓
@@ -91,7 +91,7 @@ GitHub Pages 前端只读展示
 ```txt
 config/default-strategy.json        默认收盘扫描策略
 scripts/generate_public_data.py     静态数据生成脚本
-.github/workflows/close-scan.yml    手动校验演示 JSON，不生成或覆盖数据
+.github/workflows/close-scan.yml    工作日收盘生成、校验并提交快照
 public-data/latest-scan.json        页面读取的最新扫描结果
 public-data/run-status.json         最近一次任务状态
 public-data/history/YYYY-MM-DD.json 按交易日归档的扫描结果
@@ -111,9 +111,25 @@ python3 scripts/generate_public_data.py --provider auto
 
 `auto` 会优先尝试 AKShare；如果 AKShare 未安装、网络失败或接口异常，会继续尝试 BaoStock 历史日线备用源，再尝试新浪行情兜底；所有真实数据源都失败时才自动降级到样本数据，并在 JSON 的 `warnings` 字段里说明。
 
-GitHub Actions 不再定时生成行情，也没有仓库写入权限；手动运行时只校验三份演示 JSON 是否有效。上传 GitHub 后，在仓库设置里启用 GitHub Pages 即可。
+GitHub Actions 在工作日 16:37（北京时间）执行，真实数据源失败时会降级到 mock，校验 JSON 后仅提交 `public-data/`。手动触发用于维护验证。
 
-页面会先尝试连接本地 `/api/health`。如果没有本地后端，就读取 `public-data/latest-scan.json`，切换为只读的固定演示模式。
+使用文档规定的 `127.0.0.1:8765` 地址时，页面连接本地 `/api/health`；其他地址默认直接读取 `public-data/latest-scan.json`，不会产生预期外的 API 404。
+
+## 前端资源
+
+页面运行不依赖 CDN。React、ReactDOM 和 Babel 使用锁定版本的本地资源，Tailwind 在发布前生成本地 CSS。修改 `index.html` 中的类名或 `src/styles.css` 后运行：
+
+```bash
+npm install
+npm run build:ui
+```
+
+首次运行浏览器回归测试时安装 Chromium，再执行四档视口用例：
+
+```bash
+npx playwright install chromium
+npm run test:ui
+```
 
 ## 后续重启建议
 
