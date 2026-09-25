@@ -1,7 +1,7 @@
 {
   "ok": true,
   "mode": "close-scan",
-  "runAt": "2026-09-24 21:43:53",
+  "runAt": "2026-09-25 22:06:23",
   "tradeDate": "2026-09-24",
   "provider": "tickflow",
   "warnings": [],
@@ -13,7 +13,7 @@
     "marketDrop": 1.22,
     "marketVolRatio": 0.87,
     "ma20Up": true,
-    "time": "13:43",
+    "time": "14:06",
     "stocks": [
       {
         "id": "600000",
