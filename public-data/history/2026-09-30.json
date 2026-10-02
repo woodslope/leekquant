@@ -1,7 +1,7 @@
 {
   "ok": true,
   "mode": "close-scan",
-  "runAt": "2026-10-01 23:37:02",
+  "runAt": "2026-10-02 22:55:58",
   "tradeDate": "2026-09-30",
   "provider": "tickflow",
   "strategyName": "强中强反转突破策略 第二版",
@@ -9,7 +9,7 @@
   "warnings": [],
   "market": {
     "date": "2026-09-30",
-    "time": "15:37",
+    "time": "14:56",
     "indexAboveMa": false,
     "limitDownCount": 0,
     "crashDays": 0,
