@@ -1,20 +1,20 @@
 {
   "ok": true,
   "mode": "close-scan",
-  "runAt": "2026-10-20 21:48:17",
-  "tradeDate": "2026-10-20",
+  "runAt": "2026-10-21 22:03:46",
+  "tradeDate": "2026-10-21",
   "provider": "tickflow",
   "strategyName": "强中强反转突破策略 第二版",
   "strategyDescription": "收盘后扫描大盘恐慌放量下跌时逆势收阳的强势个股，用于生成次日观察清单。",
   "warnings": [],
   "market": {
-    "date": "2026-10-20",
-    "time": "13:48",
+    "date": "2026-10-21",
+    "time": "14:03",
     "indexAboveMa": false,
     "limitDownCount": 0,
     "crashDays": 0,
-    "marketDrop": 0.12,
-    "marketVolRatio": 0.88,
+    "marketDrop": 0.6,
+    "marketVolRatio": 0.82,
     "ma20Up": false,
     "stockCount": 80
   },
@@ -53,7 +53,7 @@
     "s1": [
       {
         "name": "大盘跌幅",
-        "val": "0.12% >= 1.0%",
+        "val": "0.6% >= 1.0%",
         "status": "阻断"
       },
       {
@@ -63,7 +63,7 @@
       },
       {
         "name": "大盘恐慌放量",
-        "val": "0.88 >= 1.5",
+        "val": "0.82 >= 1.5",
         "status": "阻断"
       },
       {
@@ -75,8 +75,8 @@
     "s2": [
       {
         "name": "站上均线",
-        "val": "站上50日线",
-        "status": "通过"
+        "val": "跌破50日线",
+        "status": "阻断"
       },
       {
         "name": "资金未流出",
